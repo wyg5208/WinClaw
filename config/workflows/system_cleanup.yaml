@@ -1,0 +1,78 @@
+# 系统清理检查工作流
+
+name: "system_cleanup"
+description: "检查系统临时文件、回收站大小，清理可选"
+version: "1.0"
+tags: ["system", "cleanup", "maintenance"]
+category: "maintenance"
+
+steps:
+  # 步骤1：检查临时文件夹大小
+  - id: "check_temp"
+    name: "检查临时文件夹"
+    tool: "shell"
+    action: "execute"
+    args:
+      command: |
+        $tempPath = $env:TEMP
+        $size = (Get-ChildItem $tempPath -Recurse -ErrorAction SilentlyContinue | 
+                 Measure-Object -Property Length -Sum).Sum / 1MB
+        Write-Output "临时文件夹大小: $([Math]::Round($size, 2)) MB"
+  
+  # 步骤2：检查回收站大小
+  - id: "check_recycle"
+    name: "检查回收站"
+    tool: "shell"
+    action: "execute"
+    args:
+      command: |
+        $shell = New-Object -ComObject Shell.Application
+        $recycleBin = $shell.NameSpace(10)
+        $size = ($recycleBin.Items() | Measure-Object -Property Size -Sum).Sum / 1MB
+        Write-Output "回收站大小: $([Math]::Round($size, 2)) MB"
+  
+  # 步骤3：检查系统盘剩余空间
+  - id: "check_disk"
+    name: "检查磁盘空间"
+    tool: "shell"
+    action: "execute"
+    args:
+      command: |
+        $disk = Get-PSDrive C
+        $freeGB = [Math]::Round($disk.Free / 1GB, 2)
+        $totalGB = [Math]::Round(($disk.Free + $disk.Used) / 1GB, 2)
+        Write-Output "C盘剩余: $freeGB GB / $totalGB GB"
+  
+  # 步骤4：生成清理报告
+  - id: "generate_report"
+    name: "生成清理报告"
+    tool: "file"
+    action: "write"
+    args:
+      path: "C:/Users/Public/Desktop/system_cleanup_report.txt"
+      content: |
+        系统清理检查报告
+        生成时间: {{ workflow.elapsed }}秒
+        
+        === 临时文件 ===
+        {{ steps.check_temp.result }}
+        
+        === 回收站 ===
+        {{ steps.check_recycle.result }}
+        
+        === 磁盘空间 ===
+        {{ steps.check_disk.result }}
+        
+        建议：如果临时文件或回收站占用过大，可以手动清理。
+  
+  # 步骤5：发送报告通知
+  - id: "notify_report"
+    name: "发送报告通知"
+    tool: "notify"
+    action: "send"
+    args:
+      title: "系统清理检查完成"
+      message: "报告已保存到桌面"
+
+on_failure: "continue"
+timeout: 60

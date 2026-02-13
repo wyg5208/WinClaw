@@ -1,0 +1,510 @@
+{
+  "version": "1.0",
+  "description": "WinClaw 工具配置 — 定义所有可用工具的元信息与行为参数",
+  "tools": {
+    "shell": {
+      "enabled": true,
+      "module": "src.tools.shell",
+      "class": "ShellTool",
+      "display": {
+        "name": "命令行",
+        "emoji": "💻",
+        "description": "在 Windows 系统上执行 PowerShell 或 CMD 命令，获取命令输出结果",
+        "category": "system"
+      },
+      "config": {
+        "default_shell": "powershell",
+        "timeout": 30,
+        "max_output_length": 10000,
+        "working_directory": "",
+        "env_vars": {}
+      },
+      "security": {
+        "risk_level": "high",
+        "require_confirmation": false,
+        "blacklist": [
+          "format-volume", "format c:", "format d:", "format e:",
+          "remove-item -recurse", "rm -rf", "del /s /q", "rd /s /q",
+          "shutdown", "restart-computer", "stop-computer",
+          "clear-disk", "diskpart", "reg delete",
+          "new-service", "set-executionpolicy", "invoke-webrequest -outfile"
+        ],
+        "whitelist": [],
+        "whitelist_mode": false
+      },
+      "actions": ["run"]
+    },
+    "file": {
+      "enabled": true,
+      "module": "src.tools.file",
+      "class": "FileTool",
+      "display": {
+        "name": "文件操作",
+        "emoji": "📄",
+        "description": "读取、写入、编辑文件内容，搜索文件内容，列出目录结构",
+        "category": "filesystem"
+      },
+      "config": {
+        "max_read_size": 1048576,
+        "max_lines_per_page": 200,
+        "allowed_dirs": [],
+        "denied_dirs": ["C:\\Windows\\System32", "C:\\Program Files"],
+        "allowed_extensions": [],
+        "denied_extensions": [".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".vbs"]
+      },
+      "security": {
+        "risk_level": "medium",
+        "require_confirmation": false
+      },
+      "actions": ["read", "write", "edit", "search", "list", "tree"]
+    },
+    "screen": {
+      "enabled": true,
+      "module": "src.tools.screen",
+      "class": "ScreenTool",
+      "display": {
+        "name": "屏幕截图",
+        "emoji": "📸",
+        "description": "截取屏幕内容，支持全屏、指定区域、指定窗口截图，多显示器支持",
+        "category": "visual"
+      },
+      "config": {
+        "max_width": 1920,
+        "quality": 85,
+        "format": "png",
+        "compress_for_model": true,
+        "model_max_width": 1280
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["capture", "capture_window", "list_monitors"]
+    },
+    "browser": {
+      "enabled": true,
+      "module": "src.tools.browser",
+      "class": "BrowserTool",
+      "display": {
+        "name": "浏览器",
+        "emoji": "🌐",
+        "description": "自动化操作网页浏览器：打开URL、点击、输入、获取文本、截图",
+        "category": "web"
+      },
+      "config": {
+        "headless": false,
+        "timeout": 30000,
+        "viewport_width": 1280,
+        "viewport_height": 720
+      },
+      "security": {
+        "risk_level": "medium",
+        "require_confirmation": false
+      },
+      "actions": ["open_url", "click", "type_text", "get_text", "screenshot", "go_back", "go_forward", "wait"]
+    },
+    "app_control": {
+      "enabled": true,
+      "module": "src.tools.app_control",
+      "class": "AppControlTool",
+      "display": {
+        "name": "应用控制",
+        "emoji": "🪟",
+        "description": "启动应用、列出窗口、切换窗口、关闭窗口、获取窗口信息",
+        "category": "system"
+      },
+      "config": {
+        "launch_timeout": 10
+      },
+      "security": {
+        "risk_level": "medium",
+        "require_confirmation": false
+      },
+      "actions": ["launch", "list_windows", "switch_window", "close_window", "get_window_info"]
+    },
+    "clipboard": {
+      "enabled": true,
+      "module": "src.tools.clipboard",
+      "class": "ClipboardTool",
+      "display": {
+        "name": "剪贴板",
+        "emoji": "📋",
+        "description": "读取、写入剪贴板文本和图片内容，清空剪贴板",
+        "category": "system"
+      },
+      "config": {
+        "max_text_length": 50000
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["read", "write", "read_image", "clear"]
+    },
+    "notify": {
+      "enabled": true,
+      "module": "src.tools.notify",
+      "class": "NotifyTool",
+      "display": {
+        "name": "系统通知",
+        "emoji": "🔔",
+        "description": "发送 Windows 系统通知（Toast Notification）",
+        "category": "system"
+      },
+      "config": {
+        "app_id": "WinClaw"
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["send", "send_with_action"]
+    },
+    "search": {
+      "enabled": true,
+      "module": "src.tools.search",
+      "class": "SearchTool",
+      "display": {
+        "name": "搜索",
+        "emoji": "🔍",
+        "description": "搜索本地文件（按文件名或内容）和 Web 网页搜索",
+        "category": "search"
+      },
+      "config": {
+        "max_local_results": 50,
+        "max_web_results": 10,
+        "local_max_depth": 5,
+        "web_timeout": 15
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["local_search", "web_search"]
+    },
+    "cron": {
+      "enabled": true,
+      "module": "src.tools.cron",
+      "class": "CronTool",
+      "display": {
+        "name": "定时任务",
+        "emoji": "⏰",
+        "description": "创建、管理和取消定时任务,支持 cron 表达式、间隔执行和一次性任务",
+        "category": "automation"
+      },
+      "config": {
+        "max_jobs": 50
+      },
+      "security": {
+        "risk_level": "medium",
+        "require_confirmation": false
+      },
+      "actions": ["add_cron", "add_interval", "add_once", "list_jobs", "remove_job", "pause_job", "resume_job", "create_schedule", "query_schedules", "update_schedule", "delete_schedule", "complete_schedule"]
+    },
+    "voice_input": {
+      "enabled": true,
+      "module": "src.tools.voice_input",
+      "class": "VoiceInputTool",
+      "display": {
+        "name": "语音输入",
+        "emoji": "🎤",
+        "description": "语音转文字,支持实时录音或从音频文件识别",
+        "category": "multimedia"
+      },
+      "config": {
+        "sample_rate": 16000
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["record_and_transcribe", "transcribe_file", "list_devices"]
+    },
+    "voice_output": {
+      "enabled": true,
+      "module": "src.tools.voice_output",
+      "class": "VoiceOutputTool",
+      "display": {
+        "name": "语音输出",
+        "emoji": "🔊",
+        "description": "文字转语音,支持朗读文本或保存为音频文件",
+        "category": "multimedia"
+      },
+      "config": {
+        "default_rate": 200,
+        "default_volume": 1.0
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["speak", "save_to_file", "list_voices", "stop"]
+    },
+    "ocr": {
+      "enabled": true,
+      "module": "src.tools.ocr",
+      "class": "OCRTool",
+      "display": {
+        "name": "文字识别",
+        "emoji": "📝",
+        "description": "图片文字识别,支持从图片文件或 base64 数据提取文字",
+        "category": "multimedia"
+      },
+      "config": {
+        "max_file_size_mb": 10
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["recognize_file", "recognize_base64", "recognize_screenshot"]
+    },
+    "calculator": {
+      "enabled": true,
+      "module": "src.tools.calculator",
+      "class": "CalculatorTool",
+      "display": {
+        "name": "计算器",
+        "emoji": "🔢",
+        "description": "安全的数学表达式计算器，支持四则运算、括号、幂运算和常用数学函数",
+        "category": "utility"
+      },
+      "config": {},
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["calculate"]
+    },
+    "weather": {
+      "enabled": true,
+      "module": "src.tools.weather",
+      "class": "WeatherTool",
+      "display": {
+        "name": "天气查询",
+        "emoji": "🌤️",
+        "description": "查询城市天气信息，支持实时天气和未来预报",
+        "category": "utility"
+      },
+      "config": {
+        "api_key": "",
+        "api_host": "",
+        "fallback_to_web": true
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["get_weather"]
+    },
+    "datetime_tool": {
+      "enabled": true,
+      "module": "src.tools.datetime_tool",
+      "class": "DateTimeTool",
+      "display": {
+        "name": "日期时间",
+        "emoji": "🕐",
+        "description": "获取当前日期时间，支持多种格式和时区",
+        "category": "utility"
+      },
+      "config": {},
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["get_datetime"]
+    },
+    "statistics": {
+      "enabled": true,
+      "module": "src.tools.statistics",
+      "class": "StatisticsTool",
+      "display": {
+        "name": "使用统计",
+        "emoji": "📊",
+        "description": "获取 WinClaw 使用统计信息（对话数、消息数等）",
+        "category": "utility"
+      },
+      "config": {
+        "db_path": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["get_usage_stats"]
+    },
+    "chat_history": {
+      "enabled": true,
+      "module": "src.tools.chat_history",
+      "class": "ChatHistoryTool",
+      "display": {
+        "name": "聊天历史",
+        "emoji": "💬",
+        "description": "搜索和浏览历史对话记录",
+        "category": "utility"
+      },
+      "config": {
+        "db_path": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["search_history", "get_recent_sessions"]
+    },
+    "diary": {
+      "enabled": true,
+      "module": "src.tools.diary",
+      "class": "DiaryTool",
+      "display": {
+        "name": "日记管理",
+        "emoji": "📔",
+        "description": "写日记、查询日记、更新和删除日记，支持心情/天气/标签",
+        "category": "life"
+      },
+      "config": {
+        "db_path": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["write_diary", "query_diary", "update_diary", "delete_diary"]
+    },
+    "finance": {
+      "enabled": true,
+      "module": "src.tools.finance",
+      "class": "FinanceTool",
+      "display": {
+        "name": "记账管理",
+        "emoji": "💰",
+        "description": "记录收支、查询账单、财务汇总统计",
+        "category": "life"
+      },
+      "config": {
+        "db_path": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["add_transaction", "query_transactions", "get_financial_summary", "update_transaction", "delete_transaction"]
+    },
+    "health": {
+      "enabled": true,
+      "module": "src.tools.health",
+      "class": "HealthTool",
+      "display": {
+        "name": "健康管理",
+        "emoji": "🏥",
+        "description": "记录健康数据、查询历史、趋势分析（体重/血压/心率等）",
+        "category": "life"
+      },
+      "config": {
+        "db_path": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["record_health_data", "update_health_data", "delete_health_data", "query_health_data", "get_health_trends"]
+    },
+    "medication": {
+      "enabled": true,
+      "module": "src.tools.medication",
+      "class": "MedicationTool",
+      "display": {
+        "name": "服药管理",
+        "emoji": "💊",
+        "description": "添加药物、查询服药计划、标记已服药、更新和停用药物",
+        "category": "life"
+      },
+      "config": {
+        "db_path": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["add_medication", "query_medications", "mark_medication_taken", "update_medication", "delete_medication"]
+    },
+    "knowledge": {
+      "enabled": true,
+      "module": "src.tools.knowledge",
+      "class": "KnowledgeTool",
+      "display": {
+        "name": "文档知识库",
+        "emoji": "📚",
+        "description": "索引本地文档并搜索内容，支持关键词检索和文档内容查询",
+        "category": "knowledge"
+      },
+      "config": {
+        "db_path": "",
+        "doc_dir": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["index_document", "search_documents", "query_document_content", "list_documents", "remove_document"]
+    }
+  },
+  "categories": {
+    "system": {
+      "name": "系统操作",
+      "emoji": "⚙️",
+      "description": "与操作系统交互的工具"
+    },
+    "filesystem": {
+      "name": "文件系统",
+      "emoji": "📂",
+      "description": "文件和目录操作工具"
+    },
+    "visual": {
+      "name": "视觉感知",
+      "emoji": "👁️",
+      "description": "屏幕截图和视觉相关工具"
+    },
+    "web": {
+      "name": "网页操作",
+      "emoji": "🌐",
+      "description": "浏览器自动化和网页交互工具"
+    },
+    "search": {
+      "name": "搜索",
+      "emoji": "🔍",
+      "description": "本地文件和互联网搜索工具"
+    },
+    "automation": {
+      "name": "自动化",
+      "emoji": "🤖",
+      "description": "任务自动化和工作流工具"
+    },
+    "multimedia": {
+      "name": "多媒体",
+      "emoji": "🎬",
+      "description": "语音、图片和多模态工具"
+    },
+    "utility": {
+      "name": "实用工具",
+      "emoji": "🧰",
+      "description": "计算器、天气、日期时间等轻量实用工具"
+    },
+    "life": {
+      "name": "生活管理",
+      "emoji": "🏠",
+      "description": "日记、记账、日程等个人生活管理工具"
+    },
+    "knowledge": {
+      "name": "知识库",
+      "emoji": "📚",
+      "description": "文档索引和知识检索工具"
+    }
+  },
+  "global_settings": {
+    "max_concurrent_tools": 3,
+    "default_timeout": 30,
+    "audit_all_calls": true,
+    "confirmation_for_high_risk": true
+  }
+}

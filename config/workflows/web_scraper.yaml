@@ -1,0 +1,74 @@
+# 网页信息采集工作流
+
+name: "web_scraper"
+description: "打开指定网页，提取关键信息并保存到文件"
+version: "1.0"
+tags: ["browser", "scraping", "data"]
+category: "automation"
+
+variables:
+  target_url: "https://example.com"
+  output_file: "C:/Users/Public/Desktop/scraped_data.txt"
+
+steps:
+  # 步骤1：打开目标网页
+  - id: "open_page"
+    name: "打开网页"
+    tool: "browser"
+    action: "open_url"
+    args:
+      url: "{{ variables.target_url }}"
+      wait_until: "load"
+    timeout: 30
+    retry: 2
+  
+  # 步骤2：等待页面加载
+  - id: "wait_content"
+    name: "等待内容加载"
+    tool: "browser"
+    action: "wait"
+    args:
+      selector: "body"
+      timeout: 5
+  
+  # 步骤3：截取网页截图
+  - id: "take_screenshot"
+    name: "网页截图"
+    tool: "browser"
+    action: "screenshot"
+    args:
+      full_page: true
+  
+  # 步骤4：提取页面文本
+  - id: "extract_text"
+    name: "提取页面文本"
+    tool: "browser"
+    action: "get_text"
+    args:
+      selector: ""  # 空选择器表示全页面
+  
+  # 步骤5：保存提取的文本到文件
+  - id: "save_to_file"
+    name: "保存到文件"
+    tool: "file"
+    action: "write"
+    args:
+      path: "{{ variables.output_file }}"
+      content: |
+        网页URL: {{ variables.target_url }}
+        采集时间: {{ workflow.elapsed }}秒
+        
+        页面内容:
+        {{ steps.extract_text.result }}
+  
+  # 步骤6：发送通知
+  - id: "notify_done"
+    name: "发送通知"
+    tool: "notify"
+    action: "send"
+    args:
+      title: "网页采集完成"
+      message: "数据已保存到 {{ variables.output_file }}"
+
+on_failure: "abort"
+timeout: 120

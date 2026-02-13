@@ -1,0 +1,88 @@
+# 文件整理工作流模板
+
+name: "desktop_organizer"
+description: "自动整理桌面文件，按文件类型分类到不同文件夹"
+version: "1.0"
+tags: ["file", "organization", "automation"]
+category: "productivity"
+
+variables:
+  target_dir: "C:/Users/Public/Desktop"
+  organize_root: "C:/Users/Public/Desktop/整理结果"
+
+steps:
+  # 步骤1：列出桌面所有文件
+  - id: "list_files"
+    name: "扫描桌面文件"
+    tool: "file"
+    action: "list"
+    args:
+      path: "{{ variables.target_dir }}"
+      recursive: false
+  
+  # 步骤2：创建分类文件夹（文档/图片/视频/压缩包/其他）
+  - id: "create_folders"
+    name: "创建分类文件夹"
+    tool: "file"
+    action: "write"
+    args:
+      path: "{{ variables.organize_root }}/.created"
+      content: "Folder structure created"
+    retry: 1
+  
+  # 步骤3：移动文档文件
+  - id: "move_documents"
+    name: "移动文档文件"
+    tool: "shell"
+    action: "execute"
+    args:
+      command: |
+        $docs = @('*.pdf', '*.doc', '*.docx', '*.txt', '*.md')
+        $target = '{{ variables.organize_root }}\文档'
+        New-Item -ItemType Directory -Path $target -Force
+        foreach ($ext in $docs) {
+          Get-ChildItem '{{ variables.target_dir }}' -Filter $ext -File | 
+            Move-Item -Destination $target -Force
+        }
+  
+  # 步骤4：移动图片文件
+  - id: "move_images"
+    name: "移动图片文件"
+    tool: "shell"
+    action: "execute"
+    args:
+      command: |
+        $imgs = @('*.jpg', '*.png', '*.gif', '*.bmp', '*.webp')
+        $target = '{{ variables.organize_root }}\图片'
+        New-Item -ItemType Directory -Path $target -Force
+        foreach ($ext in $imgs) {
+          Get-ChildItem '{{ variables.target_dir }}' -Filter $ext -File | 
+            Move-Item -Destination $target -Force
+        }
+  
+  # 步骤5：移动压缩文件
+  - id: "move_archives"
+    name: "移动压缩文件"
+    tool: "shell"
+    action: "execute"
+    args:
+      command: |
+        $archives = @('*.zip', '*.rar', '*.7z', '*.tar', '*.gz')
+        $target = '{{ variables.organize_root }}\压缩包'
+        New-Item -ItemType Directory -Path $target -Force
+        foreach ($ext in $archives) {
+          Get-ChildItem '{{ variables.target_dir }}' -Filter $ext -File | 
+            Move-Item -Destination $target -Force
+        }
+  
+  # 步骤6：发送完成通知
+  - id: "notify_done"
+    name: "发送完成通知"
+    tool: "notify"
+    action: "send"
+    args:
+      title: "桌面整理完成"
+      message: "文件已按类型分类整理完毕"
+
+on_failure: "continue"  # 某个步骤失败继续执行后续步骤
+timeout: 300  # 5分钟超时

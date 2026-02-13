@@ -1,0 +1,95 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "D:/"
+      ],
+      "description": "文件系统访问 - 允许读写指定目录下的文件",
+      "enabled": false
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "description": "网页抓取 - 获取网页内容",
+      "enabled": false
+    },
+    "sqlite": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "~/.winclaw/data.db"
+      ],
+      "description": "SQLite 数据库操作 - 查询和管理本地数据库",
+      "enabled": true
+    },
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "description": "记忆存储 - 在会话间持久化存储信息",
+      "enabled": true
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ],
+      "description": "顺序思考 - 帮助AI进行结构化复杂推理",
+      "enabled": true
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "在此填入你的Brave Search API Key"
+      },
+      "description": "Brave搜索 - 高质量网页搜索（需要免费API Key）",
+      "enabled": false
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "在此填入你的GitHub Personal Access Token"
+      },
+      "description": "GitHub操作 - 仓库、Issue、PR管理",
+      "enabled": false
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ],
+      "description": "Puppeteer浏览器 - 高级网页自动化和截图",
+      "enabled": false
+    },
+    "slack": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-slack"
+      ],
+      "env": {
+        "SLACK_BOT_TOKEN": "在此填入你的Slack Bot Token"
+      },
+      "description": "Slack集成 - 发送消息、读取频道",
+      "enabled": false
+    }
+  }
+}

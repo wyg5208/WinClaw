@@ -1,0 +1,72 @@
+# 截屏智能分析工作流
+
+name: "smart_screenshot_analysis"
+description: "截屏并智能分析内容，根据检测结果采取不同动作"
+version: "1.0"
+tags: ["screenshot", "ai", "analysis"]
+category: "ai_workflow"
+
+steps:
+  # 步骤1：全屏截图
+  - id: "capture"
+    name: "截取全屏"
+    tool: "screen"
+    action: "capture_full"
+    args:
+      quality: 85
+    retry: 1
+  
+  # 步骤2：将截图复制到剪贴板（可选）
+  - id: "copy_to_clipboard"
+    name: "复制截图到剪贴板"
+    tool: "file"
+    action: "read"
+    args:
+      path: "{{ steps.capture.result.image_path }}"
+  
+  # 步骤3：检查截图中是否包含错误信息（模拟AI分析）
+  # 注意：实际使用时需要接入真实的视觉AI模型
+  - id: "check_for_errors"
+    name: "检测错误信息"
+    tool: "file"
+    action: "search"
+    args:
+      path: "{{ steps.capture.result.image_path }}"
+      pattern: "error|exception|failed"
+    on_failure: "continue"
+  
+  # 步骤4a：如果检测到错误，发送警告通知
+  - id: "notify_error"
+    name: "发送错误警告"
+    tool: "notify"
+    action: "send"
+    args:
+      title: "⚠️ 检测到错误"
+      message: "截图中可能包含错误信息，请检查"
+    condition: "{{ steps.check_for_errors.status == 'success' }}"
+  
+  # 步骤4b：如果没有错误，保存截图到指定位置
+  - id: "save_screenshot"
+    name: "保存截图"
+    tool: "shell"
+    action: "execute"
+    args:
+      command: |
+        $source = "{{ steps.capture.result.image_path }}"
+        $dest = "C:/Users/Public/Pictures/Screenshots/screen_$(Get-Date -Format 'yyyyMMdd_HHmmss').png"
+        New-Item -ItemType Directory -Path (Split-Path $dest) -Force
+        Copy-Item $source $dest
+        Write-Output "已保存到: $dest"
+    condition: "{{ steps.check_for_errors.status != 'success' }}"
+  
+  # 步骤5：发送完成通知
+  - id: "notify_done"
+    name: "发送完成通知"
+    tool: "notify"
+    action: "send"
+    args:
+      title: "截屏分析完成"
+      message: "截图已处理完毕"
+
+on_failure: "continue"
+timeout: 30

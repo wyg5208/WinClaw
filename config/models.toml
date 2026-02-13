@@ -1,0 +1,179 @@
+# WinClaw 模型配置
+# 每个模型定义在 [models.<key>] 节下
+# 必填字段: id, name, provider, api_type
+# 可选字段: base_url, api_key_env, input_types, supports_function_calling,
+#           context_window, max_tokens, cost_input, cost_output, tags
+
+# ============================================================================
+# DeepSeek（默认首选，性价比最高）
+# ============================================================================
+
+[models.deepseek-chat]
+id = "deepseek/deepseek-chat"
+name = "DeepSeek V3"
+provider = "deepseek"
+api_type = "openai"
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+input_types = ["text"]
+supports_function_calling = true
+context_window = 64000
+max_tokens = 8192
+cost_input = 0.14
+cost_output = 0.28
+tags = ["default", "cheap", "function-calling"]
+
+[models.deepseek-reasoner]
+id = "deepseek/deepseek-reasoner"
+name = "DeepSeek R1 (思考模式)"
+provider = "deepseek"
+api_type = "openai"
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+input_types = ["text"]
+supports_function_calling = false
+context_window = 64000
+max_tokens = 8192
+cost_input = 0.55
+cost_output = 2.19
+tags = ["reasoning"]
+
+# ============================================================================
+# OpenAI
+# ============================================================================
+
+[models.gpt-4o]
+id = "gpt-4o"
+name = "GPT-4o"
+provider = "openai"
+api_type = "openai"
+api_key_env = "OPENAI_API_KEY"
+input_types = ["text", "image"]
+supports_function_calling = true
+context_window = 128000
+max_tokens = 16384
+cost_input = 2.5
+cost_output = 10.0
+tags = ["multimodal", "function-calling"]
+
+[models.gpt-4o-mini]
+id = "gpt-4o-mini"
+name = "GPT-4o Mini"
+provider = "openai"
+api_type = "openai"
+api_key_env = "OPENAI_API_KEY"
+input_types = ["text", "image"]
+supports_function_calling = true
+context_window = 128000
+max_tokens = 16384
+cost_input = 0.15
+cost_output = 0.60
+tags = ["cheap", "multimodal", "function-calling"]
+
+[models.o3-mini]
+id = "o3-mini"
+name = "OpenAI o3-mini"
+provider = "openai"
+api_type = "openai"
+api_key_env = "OPENAI_API_KEY"
+input_types = ["text"]
+supports_function_calling = true
+context_window = 200000
+max_tokens = 100000
+cost_input = 1.10
+cost_output = 4.40
+tags = ["reasoning", "function-calling"]
+
+# ============================================================================
+# Anthropic
+# ============================================================================
+
+[models.claude-sonnet]
+id = "claude-3-5-sonnet-20241022"
+name = "Claude 3.5 Sonnet"
+provider = "anthropic"
+api_type = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+input_types = ["text", "image"]
+supports_function_calling = true
+context_window = 200000
+max_tokens = 8192
+cost_input = 3.0
+cost_output = 15.0
+tags = ["multimodal", "function-calling"]
+
+[models.claude-haiku]
+id = "claude-3-5-haiku-20241022"
+name = "Claude 3.5 Haiku"
+provider = "anthropic"
+api_type = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+input_types = ["text", "image"]
+supports_function_calling = true
+context_window = 200000
+max_tokens = 8192
+cost_input = 0.80
+cost_output = 4.0
+tags = ["cheap", "multimodal", "function-calling"]
+
+# ============================================================================
+# Google Gemini
+# ============================================================================
+
+[models.gemini-2-flash]
+id = "gemini/gemini-2.0-flash"
+name = "Gemini 2.0 Flash"
+provider = "google"
+api_type = "google"
+api_key_env = "GEMINI_API_KEY"
+input_types = ["text", "image"]
+supports_function_calling = true
+context_window = 1048576
+max_tokens = 8192
+cost_input = 0.10
+cost_output = 0.40
+tags = ["cheap", "multimodal", "function-calling"]
+
+[models.gemini-2-pro]
+id = "gemini/gemini-2.0-pro-exp-02-05"
+name = "Gemini 2.0 Pro (实验版)"
+provider = "google"
+api_type = "google"
+api_key_env = "GEMINI_API_KEY"
+input_types = ["text", "image"]
+supports_function_calling = true
+context_window = 2097152
+max_tokens = 8192
+cost_input = 1.25
+cost_output = 10.0
+tags = ["multimodal", "function-calling"]
+
+# ============================================================================
+# 本地模型（Ollama）
+# ============================================================================
+
+[models.local-qwen]
+id = "ollama/qwen2.5:7b"
+name = "Qwen 2.5 7B (本地)"
+provider = "ollama"
+api_type = "ollama"
+input_types = ["text"]
+supports_function_calling = false
+context_window = 32768
+max_tokens = 8192
+cost_input = 0.0
+cost_output = 0.0
+tags = ["free", "local"]
+
+[models.local-llama]
+id = "ollama/llama3.1:8b"
+name = "Llama 3.1 8B (本地)"
+provider = "ollama"
+api_type = "ollama"
+input_types = ["text"]
+supports_function_calling = false
+context_window = 131072
+max_tokens = 8192
+cost_input = 0.0
+cost_output = 0.0
+tags = ["free", "local"]
