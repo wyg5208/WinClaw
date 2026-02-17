@@ -109,16 +109,18 @@ class AttachmentPanel(QFrame):
         self._connect_signals()
         self.setAcceptDrops(True)
         
+        # 设置对象名称，用于主题样式识别
+        self.setObjectName("attachmentPanel")
+        
         # 初始状态：隐藏内容区
         self._content_widget.setVisible(False)
         self._update_header()
     
     def _setup_ui(self) -> None:
         self.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Raised)
+        # 基础样式，背景色由主题控制
         self.setStyleSheet("""
-            AttachmentPanel {
-                background: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QFrame {
                 border-radius: 6px;
             }
         """)
@@ -297,30 +299,27 @@ class AttachmentPanel(QFrame):
         """拖拽进入事件。"""
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
+            # 拖拽时的高亮效果，背景色由主题控制
             self.setStyleSheet("""
-                AttachmentPanel {
-                    background: #e8f5e9;
-                    border: 2px dashed #28a745;
+                QFrame {
                     border-radius: 6px;
                 }
             """)
     
     def dragLeaveEvent(self, event) -> None:
         """拖拽离开事件。"""
+        # 恢复默认样式，背景色由主题控制
         self.setStyleSheet("""
-            AttachmentPanel {
-                background: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QFrame {
                 border-radius: 6px;
             }
         """)
     
     def dropEvent(self, event: QDropEvent) -> None:
         """拖拽放下事件。"""
+        # 恢复默认样式，背景色由主题控制
         self.setStyleSheet("""
-            AttachmentPanel {
-                background: #f8f9fa;
-                border: 1px solid #dee2e6;
+            QFrame {
                 border-radius: 6px;
             }
         """)

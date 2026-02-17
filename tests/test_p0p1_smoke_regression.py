@@ -159,7 +159,7 @@ def test_regression_original_actions():
     expected = {
         "shell": 1, "file": 6, "screen": 3, "browser": 8,
         "app_control": 5, "clipboard": 4, "notify": 2, "search": 2,
-        "voice_input": 3, "voice_output": 4, "ocr": 2,
+        "voice_input": 4, "voice_output": 4, "ocr": 2,
     }
     for name, count in expected.items():
         tool = registry.get_tool(name)
@@ -518,16 +518,16 @@ async def test_smoke_finance():
 
 async def test_smoke_knowledge():
     """冒烟：文档知识库工具。"""
-    print("\n🧪 冒烟测试 — Knowledge")
-    from src.tools.knowledge import KnowledgeTool
+    print("\n🧪 冒烟测试 — Knowledge RAG")
+    from src.tools.knowledge_rag import KnowledgeRAGTool
 
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test_knowledge.db"
         doc_dir = Path(tmpdir) / "docs"
         doc_dir.mkdir()
-        tool = KnowledgeTool(db_path=str(db_path), doc_dir=str(doc_dir))
+        tool = KnowledgeRAGTool(db_path=str(db_path), doc_dir=str(doc_dir))
 
-        check("名称", tool.name == "knowledge")
+        check("名称", tool.name == "knowledge_rag")
         check("5 个动作", len(tool.get_actions()) == 5)
 
         # 创建测试文件
@@ -537,9 +537,9 @@ async def test_smoke_knowledge():
             encoding="utf-8",
         )
 
-        # 索引文件
-        r = await tool.safe_execute("index_document", {"file_path": str(test_file)})
-        check("索引文件", r.is_success, r.error)
+        # 添加文档
+        r = await tool.safe_execute("add_document", {"file_path": str(test_file)})
+        check("添加文档", r.is_success, r.error)
         doc_id = r.data.get("document_id")
         check("返回 document_id", doc_id is not None)
 

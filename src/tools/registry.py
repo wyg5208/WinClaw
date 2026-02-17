@@ -192,7 +192,17 @@ class ToolRegistry:
         elif tool_name == "knowledge":
             kwargs["db_path"] = tool_config.get("db_path", "")
             kwargs["doc_dir"] = tool_config.get("doc_dir", "")
-
+        elif tool_name == "email":
+            kwargs["db_path"] = tool_config.get("db_path", "")
+        elif tool_name == "doc_generator":
+            kwargs["output_dir"] = tool_config.get("output_dir", "")
+        elif tool_name == "image_generator":
+            kwargs["api_key"] = tool_config.get("api_key", "")
+        elif tool_name == "cron":
+            # 定时任务工具需要模型注册表和工具注册表来执行 AI 任务
+            # 这些会在注册后通过 set_agent_dependencies 方法设置
+            kwargs["db_path"] = tool_config.get("db_path", "")
+                
         return kwargs
 
     # ------------------------------------------------------------------
@@ -289,13 +299,52 @@ class ToolRegistry:
 
         return schemas
 
+    def get_schemas_by_names(self, tool_names: set[str]) -> list[dict[str, Any]]:
+        """获取指定工具名称集合的 function calling schema 列表。
+
+        用于渐进式工具暴露，只返回指定工具的 Schema。
+
+        Args:
+            tool_names: 需要包含的工具名称集合
+
+        Returns:
+            匹配工具的 schema 列表
+        """
+        schemas = []
+        for tool in self._tools.values():
+            if tool.name in tool_names:
+                schemas.extend(tool.get_schema())
+        return schemas
+
     def invalidate_schema_cache(self) -> None:
         """清除 schema 缓存。在工具注册/注销后自动调用。"""
         self._schema_cache = None
 
     def resolve_function_name(self, func_name: str) -> tuple[str, str] | None:
-        """解析函数名为 (工具名, 动作名)。"""
-        return self._func_map.get(func_name)
+        """解析函数名为 (工具名, 动作名)。
+        
+        支持两种格式：
+        - 下划线格式：image_generator_generate_image
+        - 点号格式：image_generator.generate_image
+        """
+        # 直接查找
+        if func_name in self._func_map:
+            return self._func_map[func_name]
+        
+        # 尝试转换格式：点号 -> 下划线
+        func_name_underscore = func_name.replace(".", "_")
+        if func_name_underscore in self._func_map:
+            return self._func_map[func_name_underscore]
+        
+        # 尝试转换格式：下划线 -> 点号（处理工具名本身包含下划线的情况）
+        # 例如：some_tool_action -> some.tool_action
+        parts = func_name.split("_", 1)
+        if len(parts) == 2:
+            func_name_dot = f"{parts[0]}.{parts[1]}"
+            if func_name_dot in self._func_map:
+                return self._func_map[func_name_dot]
+        
+        return None
 
     async def call_function(self, func_name: str, arguments: dict[str, Any]) -> ToolResult:
         """根据函数名调用对应工具的对应动作。"""

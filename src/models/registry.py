@@ -67,6 +67,19 @@ class ModelConfig:
     def is_free(self) -> bool:
         return self.cost_input == 0.0 and self.cost_output == 0.0
 
+    @property
+    def is_available(self) -> bool:
+        """检查模型是否可用（API Key是否已配置）。"""
+        import os
+        # 本地模型（Ollama）总是可用的
+        if self.is_local:
+            return True
+        # 如果没有配置API Key环境变量，认为是可用的（可能是自定义API）
+        if not self.api_key_env:
+            return True
+        # 检查环境变量是否已配置
+        return bool(os.environ.get(self.api_key_env))
+
 
 @dataclass
 class UsageRecord:
@@ -100,6 +113,76 @@ class ModelRegistry:
                 self._load_from_toml(config_path)
             else:
                 logger.warning("模型配置文件不存在: %s，使用空配置", config_path)
+
+        # 自动检测并注册本地 Ollama 模型
+        self._detect_and_register_ollama_models()
+
+    # ------------------------------------------------------------------
+    # Ollama 自动检测
+    # ------------------------------------------------------------------
+
+    def _detect_and_register_ollama_models(self) -> None:
+        """自动检测本地 Ollama 服务并注册已安装的模型。"""
+        try:
+            import httpx
+        except ImportError:
+            logger.debug("httpx 未安装，跳过 Ollama 检测")
+            return
+
+        ollama_url = "http://localhost:11434"
+
+        # 检查 Ollama 服务是否可用
+        try:
+            with httpx.Client(timeout=5.0) as client:
+                response = client.get(f"{ollama_url}/api/tags")
+                if response.status_code != 200:
+                    logger.debug("Ollama 服务不可用，状态码: %s", response.status_code)
+                    return
+        except Exception:
+            logger.debug("Ollama 服务未运行，跳过检测")
+            return
+
+        # 获取已安装的模型列表
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.get(f"{ollama_url}/api/tags")
+                response.raise_for_status()
+                data = response.json()
+                ollama_models = data.get("models", [])
+        except Exception as e:
+            logger.warning("获取 Ollama 模型列表失败: %s", e)
+            return
+
+        if not ollama_models:
+            logger.debug("Ollama 服务运行中但未安装任何模型")
+            return
+
+        # 注册检测到的模型
+        registered_count = 0
+        for item in ollama_models:
+            model_name = item.get("name", "unknown")
+            base_name = model_name.split(':')[0]
+            
+            # 检查是否已经存在相同ID的模型（避免重复注册）
+            # 检查方式1: 完全匹配的 ollama/model_name
+            model_id = f"ollama/{model_name}"
+            exists = any(m.id == model_id or m.id == model_name for m in self._models.values())
+            
+            # 检查方式2: 检查基础名称是否已存在（如 gemma3）
+            if not exists:
+                exists = any(base_name in m.id for m in self._models.values() if m.provider == "ollama")
+            
+            if exists:
+                logger.debug("模型 %s 已存在，跳过注册", model_name)
+                continue
+
+            # 自动注册模型
+            self.register_ollama_model(model_name)
+            registered_count += 1
+            logger.info("自动注册 Ollama 模型: %s", model_name)
+
+        if registered_count > 0:
+            logger.info("共自动注册了 %d 个 Ollama 模型", registered_count)
 
     # ------------------------------------------------------------------
     # 配置加载
@@ -150,6 +233,10 @@ class ModelRegistry:
     def list_models(self) -> list[ModelConfig]:
         """列出所有模型。"""
         return list(self._models.values())
+
+    def list_available_models(self) -> list[ModelConfig]:
+        """列出所有可用的模型（已配置API Key或本地模型）。"""
+        return [m for m in self._models.values() if m.is_available]
 
     def find_by_capability(
         self,
@@ -301,6 +388,7 @@ class ModelRegistry:
 
         # 自定义 API 基地址（DeepSeek 等 OpenAI 兼容服务）
         if model_cfg.base_url:
+            # Ollama 使用 api_base 参数
             call_kwargs["api_base"] = model_cfg.base_url
 
         # 自定义 API Key 环境变量
@@ -421,6 +509,7 @@ class ModelRegistry:
 
         # 自定义 API 基地址
         if model_cfg.base_url:
+            # 所有模型统一使用 api_base 参数
             call_kwargs["api_base"] = model_cfg.base_url
 
         # 自定义 API Key

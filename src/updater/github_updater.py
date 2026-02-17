@@ -94,8 +94,8 @@ class GitHubUpdater:
     """GitHub 更新器。"""
     
     # 默认 GitHub 仓库信息
-    DEFAULT_OWNER = "your-org"  # 请替换为实际的组织/用户名
-    DEFAULT_REPO = "winclaw"    # 请替换为实际的仓库名
+    DEFAULT_OWNER = "wyg5208"  # WinClaw GitHub 组织/用户名
+    DEFAULT_REPO = "WinClaw"    # WinClaw 仓库名
     
     # GitHub API 基础 URL
     API_BASE = "https://api.github.com"

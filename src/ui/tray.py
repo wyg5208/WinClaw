@@ -9,16 +9,37 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QFont
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from src.i18n import tr
+
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication, QMainWindow
 
 logger = logging.getLogger(__name__)
+
+
+def _load_app_icon() -> QIcon | None:
+    """加载应用图标文件。"""
+    possible_paths = [
+        Path(__file__).parent.parent.parent / "resources" / "icons" / "app_icon.ico",
+        Path(__file__).parent.parent.parent / "resources" / "icons" / "app_icon_64.png",
+        Path(__file__).parent.parent.parent / "resources" / "icons" / "app_icon_32.png",
+        Path.cwd() / "resources" / "icons" / "app_icon.ico",
+        Path.cwd() / "resources" / "icons" / "app_icon_64.png",
+    ]
+    
+    for icon_path in possible_paths:
+        if icon_path.exists():
+            logger.debug(f"托盘图标已加载: {icon_path}")
+            return QIcon(str(icon_path))
+    
+    return None
 
 
 def _create_default_icon() -> QIcon:
@@ -49,38 +70,41 @@ class SystemTray(QSystemTrayIcon):
         app: QApplication,
         icon: QIcon | None = None,
     ) -> None:
-        super().__init__(icon or _create_default_icon(), app)
+        # 优先使用传入的图标，否则尝试加载应用图标，最后使用默认图标
+        if icon is None:
+            icon = _load_app_icon() or _create_default_icon()
+        super().__init__(icon, app)
         self._window = window
         self._app = app
         self._setup_menu()
         self._connect_signals()
-        self.setToolTip("WinClaw - AI 桌面智能体")
+        self.setToolTip("WinClaw - " + tr("AI 助手"))
 
     def _setup_menu(self) -> None:
         """设置右键菜单。"""
         menu = QMenu()
 
         # 显示/隐藏窗口
-        self._show_action = QAction("显示窗口", self)
+        self._show_action = QAction(tr("显示窗口"), self)
         self._show_action.triggered.connect(self._toggle_window)
         menu.addAction(self._show_action)
 
         menu.addSeparator()
 
         # 新建会话
-        new_action = QAction("新建会话", self)
+        new_action = QAction(tr("新建会话"), self)
         new_action.triggered.connect(self.new_session_requested.emit)
         menu.addAction(new_action)
 
         # 设置
-        settings_action = QAction("设置...", self)
+        settings_action = QAction(tr("设置") + "...", self)
         settings_action.triggered.connect(self.settings_requested.emit)
         menu.addAction(settings_action)
 
         menu.addSeparator()
 
         # 退出
-        quit_action = QAction("退出", self)
+        quit_action = QAction(tr("退出"), self)
         quit_action.triggered.connect(self._on_quit)
         menu.addAction(quit_action)
 

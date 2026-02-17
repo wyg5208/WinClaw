@@ -1,6 +1,18 @@
 {
   "version": "1.0",
   "description": "WinClaw 工具配置 — 定义所有可用工具的元信息与行为参数",
+  "onboarding_checklist": [
+    "1. 创建 src/tools/{name}.py 继承 BaseTool",
+    "2. 在本文件 tools 段添加工具配置（含 dependencies）",
+    "3. 在 registry.py _build_init_kwargs 添加参数映射（如需特殊参数）",
+    "4. 在 prompts.py INTENT_CATEGORIES 添加关键词到合适的意图",
+    "5. 在 prompts.py INTENT_TOOL_MAPPING 添加工具到对应意图",
+    "6. 在 prompts.py INTENT_PRIORITY_MAP 添加推荐/备选分组",
+    "7. 在 tool_exposure.py _extract_tool_name 添加多下划线前缀（如适用）",
+    "8. 在 tool_exposure.py CORE_TOOLS 或 EXTENDED_TOOLS 添加（如适用）",
+    "9. 运行 python scripts/validate_tool_chain.py 确认全绿",
+    "10. 运行 python tests/test_tool_optimization.py 确认测试通过"
+  ],
   "tools": {
     "shell": {
       "enabled": true,
@@ -103,6 +115,27 @@
       },
       "actions": ["open_url", "click", "type_text", "get_text", "screenshot", "go_back", "go_forward", "wait"]
     },
+    "browser_use": {
+      "enabled": true,
+      "module": "src.tools.browser_use",
+      "class": "BrowserUseTool",
+      "display": {
+        "name": "智能浏览器",
+        "emoji": "🤖",
+        "description": "AI驱动的浏览器自动化：用自然语言描述任务，AI自动规划并执行网页操作",
+        "category": "web"
+      },
+      "config": {
+        "headless": false,
+        "max_steps": 50,
+        "use_vision": true
+      },
+      "security": {
+        "risk_level": "medium",
+        "require_confirmation": false
+      },
+      "actions": ["run_task", "extract_data", "fill_form", "navigate_and_act", "close"]
+    },
     "app_control": {
       "enabled": true,
       "module": "src.tools.app_control",
@@ -199,7 +232,7 @@
         "risk_level": "medium",
         "require_confirmation": false
       },
-      "actions": ["add_cron", "add_interval", "add_once", "list_jobs", "remove_job", "pause_job", "resume_job", "create_schedule", "query_schedules", "update_schedule", "delete_schedule", "complete_schedule"]
+      "actions": ["add_cron", "add_interval", "add_once", "add_ai_task", "list_jobs", "remove_job", "pause_job", "resume_job", "create_schedule", "query_schedules", "update_schedule", "delete_schedule", "complete_schedule"]
     },
     "voice_input": {
       "enabled": true,
@@ -218,7 +251,7 @@
         "risk_level": "low",
         "require_confirmation": false
       },
-      "actions": ["record_and_transcribe", "transcribe_file", "list_devices"]
+      "actions": ["record_and_transcribe", "record_audio", "transcribe_file", "list_devices"]
     },
     "voice_output": {
       "enabled": true,
@@ -294,6 +327,10 @@
       "security": {
         "risk_level": "low",
         "require_confirmation": false
+      },
+      "dependencies": {
+        "output_for": ["doc_generator"],
+        "standalone": true
       },
       "actions": ["get_weather"]
     },
@@ -428,25 +465,151 @@
       },
       "actions": ["add_medication", "query_medications", "mark_medication_taken", "update_medication", "delete_medication"]
     },
-    "knowledge": {
+    "knowledge_rag": {
       "enabled": true,
-      "module": "src.tools.knowledge",
-      "class": "KnowledgeTool",
+      "module": "src.tools.knowledge_rag",
+      "class": "KnowledgeRAGTool",
       "display": {
-        "name": "文档知识库",
-        "emoji": "📚",
-        "description": "索引本地文档并搜索内容，支持关键词检索和文档内容查询",
+        "name": "智能知识库",
+        "emoji": "🧠",
+        "description": "基于向量检索的智能知识库，支持 PDF/DOCX/图片/URL 等格式的语义搜索",
         "category": "knowledge"
       },
       "config": {
         "db_path": "",
-        "doc_dir": ""
+        "doc_dir": "",
+        "vector_db_dir": ""
       },
       "security": {
         "risk_level": "low",
         "require_confirmation": false
       },
-      "actions": ["index_document", "search_documents", "query_document_content", "list_documents", "remove_document"]
+      "actions": ["add_document", "search", "query_document", "list_documents", "remove_document"]
+    },
+    "batch_paper_analyzer": {
+      "enabled": true,
+      "module": "src.tools.batch_paper_analyzer",
+      "class": "BatchPaperAnalyzerTool",
+      "display": {
+        "name": "批量论文分析",
+        "emoji": "📚",
+        "description": "批量阅读和分析学术论文，从文件夹读取PDF/DOCX，解析后存入向量库，生成阅读大纲和学术建议",
+        "category": "knowledge"
+      },
+      "config": {
+        "output_dir": "generated/paper_analysis"
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["scan_folder", "batch_import", "analyze_papers", "generate_report", "full_pipeline"]
+    },
+    "email": {
+      "enabled": true,
+      "module": "src.tools.email",
+      "class": "EmailTool",
+      "display": {
+        "name": "邮件管理",
+        "emoji": "📧",
+        "description": "管理邮箱账户、收取和发送邮件，支持 126/163/QQ/新浪邮箱",
+        "category": "communication"
+      },
+      "config": {
+        "db_path": ""
+      },
+      "security": {
+        "risk_level": "medium",
+        "require_confirmation": true
+      },
+      "actions": ["add_email_account", "query_email_accounts", "fetch_emails", "query_emails", "get_email_detail", "send_email"]
+    },
+    "doc_generator": {
+      "enabled": true,
+      "module": "src.tools.doc_generator",
+      "class": "DocGeneratorTool",
+      "display": {
+        "name": "文档生成",
+        "emoji": "📄",
+        "description": "生成 Word 文档或 HTML 文件，支持 Markdown 格式输入",
+        "category": "generation"
+      },
+      "config": {
+        "output_dir": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "dependencies": {
+        "input_sources": ["weather", "image_generator", "file", "search"],
+        "standalone": false,
+        "description": "文档生成器，通常需要配合内容源工具使用"
+      },
+      "actions": ["generate_document"]
+    },
+    "image_generator": {
+      "enabled": true,
+      "module": "src.tools.image_generator",
+      "class": "ImageGeneratorTool",
+      "display": {
+        "name": "AI绘图",
+        "emoji": "🎨",
+        "description": "基于智谱 CogView-4 系列生成 AI 图像",
+        "category": "generation"
+      },
+      "config": {
+        "api_key": ""
+      },
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "dependencies": {
+        "output_for": ["doc_generator"],
+        "standalone": true
+      },
+      "actions": ["generate_image"]
+    },
+    "python_runner": {
+      "enabled": true,
+      "module": "src.tools.python_runner",
+      "class": "PythonRunnerTool",
+      "display": {
+        "name": "Python脚本执行器",
+        "emoji": "🐍",
+        "description": "智能执行Python脚本，自动检测虚拟环境、安装依赖、支持GUI程序非交互模式",
+        "category": "utility"
+      },
+      "config": {
+        "timeout": 300,
+        "max_output_length": 10000,
+        "prefer_uv": true,
+        "auto_install_deps": true,
+        "default_headless": true
+      },
+      "security": {
+        "risk_level": "medium",
+        "require_confirmation": false
+      },
+      "actions": ["execute", "detect_venv", "analyze_script", "create_venv", "install_deps", "run_code"]
+    },
+    "tool_info": {
+      "enabled": true,
+      "module": "src.tools.tool_info",
+      "class": "ToolInfoTool",
+      "display": {
+        "name": "工具信息",
+        "emoji": "🛠️",
+        "description": "查询系统可用工具清单、工具详情和分类信息",
+        "category": "utility"
+      },
+      "config": {},
+      "security": {
+        "risk_level": "low",
+        "require_confirmation": false
+      },
+      "actions": ["list_tools", "get_tool_info", "list_categories"]
     }
   },
   "categories": {
@@ -499,6 +662,16 @@
       "name": "知识库",
       "emoji": "📚",
       "description": "文档索引和知识检索工具"
+    },
+    "communication": {
+      "name": "通讯",
+      "emoji": "📬",
+      "description": "邮件收发和通讯工具"
+    },
+    "generation": {
+      "name": "内容生成",
+      "emoji": "✨",
+      "description": "文档生成、图像生成等 AI 内容创作工具"
     }
   },
   "global_settings": {

@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
@@ -158,6 +159,7 @@ class WorkflowPanel(QGroupBox):
     cancel_requested = Signal()
     pause_requested = Signal()
     resume_requested = Signal()
+    copy_requested = Signal()  # 复制请求信号
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__("工作流", parent)
@@ -174,7 +176,7 @@ class WorkflowPanel(QGroupBox):
         layout.setContentsMargins(8, 12, 8, 8)
         layout.setSpacing(8)
         
-        # 头部：工作流名称 + 进度
+        # 头部：工作流名称 + 进度 + 复制按钮
         header_layout = QHBoxLayout()
         
         self._workflow_name = QLabel("无活动工作流")
@@ -185,6 +187,14 @@ class WorkflowPanel(QGroupBox):
         
         self._progress_label = QLabel("")
         header_layout.addWidget(self._progress_label)
+        
+        # 复制按钮
+        self._copy_btn = QPushButton("复制")
+        self._copy_btn.setToolTip("复制工作流信息")
+        self._copy_btn.setFixedSize(45, 22)
+        self._copy_btn.setStyleSheet("font-size: 10px; border: none; padding: 2px;")
+        self._copy_btn.clicked.connect(self._copy_workflow)
+        header_layout.addWidget(self._copy_btn)
         
         layout.addLayout(header_layout)
         
@@ -200,8 +210,8 @@ class WorkflowPanel(QGroupBox):
         # 步骤列表（可滚动）
         self._scroll_area = QScrollArea()
         self._scroll_area.setWidgetResizable(True)
-        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._scroll_area.setMinimumHeight(120)
         self._scroll_area.setMaximumHeight(250)
         
@@ -232,6 +242,38 @@ class WorkflowPanel(QGroupBox):
         
         # 初始状态：隐藏
         self._show_idle_state()
+    
+    def _copy_workflow(self) -> None:
+        """复制工作流信息到剪贴板。"""
+        if not self._workflow:
+            clipboard = QGuiApplication.clipboard()
+            clipboard.setText("当前无活动工作流")
+            return
+
+        # 构建工作流信息文本
+        info = f"工作流: {self._workflow.name}\n"
+        info += f"状态: {self._workflow.status}\n"
+        info += f"总耗时: {self._workflow.total_elapsed:.2f}秒\n"
+        info += "\n步骤详情:\n"
+
+        for i, step in enumerate(self._workflow.steps, 1):
+            status_icon = {
+                "pending": "○",
+                "running": "◐",
+                "completed": "●",
+                "failed": "✕",
+                "skipped": "⊘"
+            }.get(step.status, "?")
+            info += f"  {i}. {status_icon} {step.name} ({step.elapsed:.2f}秒)"
+            if step.error:
+                info += f" - 错误: {step.error}"
+            info += "\n"
+
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText(info)
+
+        # 发送信号通知复制成功
+        self.copy_requested.emit()
     
     def _show_idle_state(self) -> None:
         """显示空闲状态。"""

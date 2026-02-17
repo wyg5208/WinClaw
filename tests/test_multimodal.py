@@ -34,7 +34,7 @@ async def test_voice_input_tool_import():
 
         tool = VoiceInputTool()
         assert tool.name == "voice_input"
-        assert len(tool.get_actions()) == 3
+        assert len(tool.get_actions()) == 4
     except ImportError:
         pytest.skip("语音输入功能未安装 (pip install winclaw[voice])")
 
@@ -144,7 +144,7 @@ async def test_ocr_tool_import():
 
         tool = OCRTool()
         assert tool.name == "ocr"
-        assert len(tool.get_actions()) == 2
+        assert len(tool.get_actions()) == 3  # recognize_file, recognize_region, recognize_screenshot
     except ImportError:
         pytest.skip("OCR 功能未安装 (pip install winclaw[ocr])")
 

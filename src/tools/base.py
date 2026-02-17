@@ -41,17 +41,67 @@ class ToolResult:
     def is_success(self) -> bool:
         return self.status == ToolResultStatus.SUCCESS
 
-    def to_message(self) -> str:
-        """转为发送给 AI 模型的文本消息。"""
+    def to_message(self, failure_count: int = 0) -> str:
+        """转为发送给 AI 模型的文本消息（支持分级错误反馈）。
+
+        Phase 6 增强：根据连续失败次数分级返回不同详细程度的错误信息。
+        - 首次失败：简短版（1行）
+        - 第二次失败：标准版（2-3行，含建议）
+        - 连续3次+：详细版（含错误类型、可能原因、建议操作）
+
+        Args:
+            failure_count: 当前连续失败次数（0 表示首次或成功）
+        """
         if self.is_success:
             return self.output or "(无输出)"
         if self.status == ToolResultStatus.TIMEOUT:
-            return f"[超时] 工具执行超时"
+            if failure_count <= 1:
+                return "[超时] 工具执行超时"
+            return (
+                "[超时] 工具执行超时\n"
+                "建议: 1)检查服务是否响应 2)如多次超时请向用户说明"
+            )
         if self.status == ToolResultStatus.DENIED:
             return f"[权限拒绝] {self.error}" if self.error else "[权限拒绝] 操作被拒绝"
         if self.status == ToolResultStatus.CANCELLED:
             return "[取消] 操作已取消"
-        return f"[错误] {self.error}" if self.error else f"[{self.status.value}]"
+
+        # 错误状态：分级反馈
+        error_text = self.error or "未知错误"
+
+        if failure_count <= 1:
+            # 简短版
+            return f"[错误] {error_text}"
+        elif failure_count <= 2:
+            # 标准版
+            error_type = self._extract_error_type()
+            return (
+                f"[错误] {error_text}\n"
+                f"类型: {error_type}\n"
+                f"建议: 1)检查参数和服务状态 2)如多次失败请向用户说明"
+            )
+        else:
+            # 详细版
+            error_type = self._extract_error_type()
+            return (
+                f"[错误] {error_text}\n"
+                f"- 错误类型: {error_type}\n"
+                f"- 耗时: {self.duration_ms:.0f}ms\n"
+                f"- 建议操作:\n"
+                f"  1. 检查工具参数是否正确\n"
+                f"  2. 检查相关服务是否正常运行\n"
+                f"  3. 如果多次失败，向用户说明情况\n"
+                f"- 注意: 不要调用其他不相关的工具来替代"
+            )
+
+    def _extract_error_type(self) -> str:
+        """从错误信息中提取错误类型。"""
+        if not self.error:
+            return "Unknown"
+        # 尝试提取 "ExceptionType: message" 格式
+        if ": " in self.error:
+            return self.error.split(": ", 1)[0]
+        return self.status.value
 
 
 @dataclass

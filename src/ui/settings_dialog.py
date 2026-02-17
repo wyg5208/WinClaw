@@ -42,6 +42,7 @@ from .keystore import (
     save_key,
 )
 from .theme import Theme
+from src.i18n import tr
 
 if TYPE_CHECKING:
     pass
@@ -58,6 +59,7 @@ class SettingsDialog(QDialog):
     hotkey_changed = Signal(str)  # 新快捷键字符串
     keys_updated = Signal()  # API Key 更新后
     whisper_model_changed = Signal(str)  # Whisper 模型名称
+    language_changed = Signal(str)  # 语言切换后
 
     # Whisper 模型列表和描述
     WHISPER_MODELS = [
@@ -91,7 +93,7 @@ class SettingsDialog(QDialog):
 
     def _setup_ui(self) -> None:
         """构建 UI。"""
-        self.setWindowTitle("设置")
+        self.setWindowTitle(tr("设置"))
         self.setMinimumSize(520, 400)
         self.resize(560, 440)
 
@@ -99,17 +101,17 @@ class SettingsDialog(QDialog):
 
         # 选项卡
         tabs = QTabWidget()
-        tabs.addTab(self._create_apikey_tab(), "API 密钥")
-        tabs.addTab(self._create_general_tab(), "通用")
-        tabs.addTab(self._create_mcp_tab(), "MCP 扩展")
-        tabs.addTab(self._create_update_tab(), "更新")
+        tabs.addTab(self._create_apikey_tab(), tr("API 密钥"))
+        tabs.addTab(self._create_general_tab(), tr("通用"))
+        tabs.addTab(self._create_mcp_tab(), "MCP")
+        tabs.addTab(self._create_update_tab(), tr("更新"))
         layout.addWidget(tabs)
 
         # 按钮
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        close_btn = QPushButton("关闭")
+        close_btn = QPushButton(tr("关闭"))
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
@@ -146,7 +148,7 @@ class SettingsDialog(QDialog):
             stored = load_key(env_var)
             if stored:
                 edit.setText(stored)
-                edit.setPlaceholderText("已存储 " + mask_key(stored))
+                edit.setPlaceholderText(tr("已存储") + " " + mask_key(stored))
 
             self._key_edits[env_var] = edit
             row.addWidget(edit, stretch=1)
@@ -154,15 +156,38 @@ class SettingsDialog(QDialog):
             # 显示/隐藏按钮
             toggle_btn = QPushButton("👁")
             toggle_btn.setFixedWidth(36)
-            toggle_btn.setToolTip("显示/隐藏密钥")
+            toggle_btn.setToolTip(tr("显示/隐藏密钥"))
+            toggle_btn.setStyleSheet("""
+                QPushButton {
+                    border: none;
+                    padding: 2px;
+                    background: transparent;
+                }
+                QPushButton:hover {
+                    background: #e0e0e0;
+                    border-radius: 4px;
+                }
+            """)
             toggle_btn.clicked.connect(
                 lambda checked, e=edit: self._toggle_echo(e)
             )
             row.addWidget(toggle_btn)
 
             # 保存按钮
-            save_btn = QPushButton("保存")
+            save_btn = QPushButton(tr("保存"))
             save_btn.setFixedWidth(50)
+            save_btn.setStyleSheet("""
+                QPushButton {
+                    border: none;
+                    padding: 2px;
+                    background: transparent;
+                    color: #0078d4;
+                }
+                QPushButton:hover {
+                    background: #e0e0e0;
+                    border-radius: 4px;
+                }
+            """)
             save_btn.clicked.connect(
                 lambda checked, ev=env_var, e=edit: self._save_key(ev, e)
             )
@@ -171,7 +196,19 @@ class SettingsDialog(QDialog):
             # 删除按钮
             del_btn = QPushButton("✕")
             del_btn.setFixedWidth(30)
-            del_btn.setToolTip("删除密钥")
+            del_btn.setToolTip(tr("删除密钥"))
+            del_btn.setStyleSheet("""
+                QPushButton {
+                    border: none;
+                    padding: 2px;
+                    background: transparent;
+                    color: #dc3545;
+                }
+                QPushButton:hover {
+                    background: #ffebee;
+                    border-radius: 4px;
+                }
+            """)
             del_btn.clicked.connect(
                 lambda checked, ev=env_var, e=edit: self._delete_key(ev, e)
             )
@@ -194,24 +231,24 @@ class SettingsDialog(QDialog):
         """保存 API Key。"""
         value = edit.text().strip()
         if not value:
-            QMessageBox.warning(self, "提示", "请输入密钥值")
+            QMessageBox.warning(self, tr("提示"), tr("请输入密钥值"))
             return
         if save_key(env_var, value):
             # 同时注入到当前进程环境变量
             import os
             os.environ[env_var] = value
-            edit.setPlaceholderText("已存储 " + mask_key(value))
+            edit.setPlaceholderText(tr("已存储") + " " + mask_key(value))
             self.keys_updated.emit()
-            QMessageBox.information(self, "成功", f"{env_var} 已安全存储")
+            QMessageBox.information(self, tr("成功"), f"{env_var} " + tr("已安全存储"))
         else:
-            QMessageBox.critical(self, "错误", "保存失败，请重试")
+            QMessageBox.critical(self, tr("错误"), tr("保存失败，请重试"))
 
     def _delete_key(self, env_var: str, edit: QLineEdit) -> None:
         """删除 API Key。"""
         if not has_key(env_var):
             return
         reply = QMessageBox.question(
-            self, "确认", f"确定删除 {env_var}？",
+            self, tr("确认"), f"{tr('确定删除')} {env_var}？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -230,15 +267,41 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(widget)
 
         # ---------- 主题 ----------
-        theme_group = QGroupBox("外观")
+        theme_group = QGroupBox(tr("外观"))
         theme_layout = QFormLayout(theme_group)
 
         self._theme_combo = QComboBox()
-        self._theme_combo.addItems(["亮色", "暗色", "跟随系统"])
-        _theme_map = {"light": 0, "dark": 1, "system": 2}
+        # 主题选项：基础 + 时尚渐变主题 + 深色系主题
+        theme_items = [
+            tr("亮色"),
+            tr("暗色"),
+            tr("跟随系统"),
+            tr("海洋蓝"),
+            tr("森林绿"),
+            tr("日落橙"),
+            tr("紫色梦幻"),
+            tr("玫瑰粉"),
+            tr("极简白"),
+            tr("深蓝色"),
+            tr("深棕色"),
+        ]
+        self._theme_combo.addItems(theme_items)
+        _theme_map = {
+            "light": 0,
+            "dark": 1,
+            "system": 2,
+            "ocean_blue": 3,
+            "forest_green": 4,
+            "sunset_orange": 5,
+            "purple_dream": 6,
+            "pink_rose": 7,
+            "minimal_white": 8,
+            "deep_blue": 9,
+            "deep_brown": 10,
+        }
         self._theme_combo.setCurrentIndex(_theme_map.get(self._current_theme, 0))
         self._theme_combo.currentIndexChanged.connect(self._on_theme_changed)
-        theme_layout.addRow("主题:", self._theme_combo)
+        theme_layout.addRow(tr("主题") + ":", self._theme_combo)
 
         # 语言切换
         self._lang_combo = QComboBox()
@@ -253,12 +316,12 @@ class SettingsDialog(QDialog):
                 self._lang_combo.setCurrentIndex(i)
                 break
         self._lang_combo.currentIndexChanged.connect(self._on_language_changed)
-        theme_layout.addRow("语言:", self._lang_combo)
+        theme_layout.addRow(tr("语言") + ":", self._lang_combo)
 
         layout.addWidget(theme_group)
 
         # ---------- 模型 ----------
-        model_group = QGroupBox("AI 模型")
+        model_group = QGroupBox(tr("AI 模型"))
         model_layout = QFormLayout(model_group)
 
         self._model_combo = QComboBox()
@@ -271,12 +334,12 @@ class SettingsDialog(QDialog):
         self._model_combo.currentTextChanged.connect(
             lambda name: self.model_changed.emit(name)
         )
-        model_layout.addRow("默认模型:", self._model_combo)
+        model_layout.addRow(tr("默认模型") + ":", self._model_combo)
 
         layout.addWidget(model_group)
 
         # ---------- 语音识别 ----------
-        voice_group = QGroupBox("语音识别 (Whisper)")
+        voice_group = QGroupBox(tr("语音识别 (Whisper)"))
         voice_layout = QFormLayout(voice_group)
 
         self._whisper_combo = QComboBox()
@@ -290,11 +353,11 @@ class SettingsDialog(QDialog):
                 break
 
         self._whisper_combo.currentIndexChanged.connect(self._on_whisper_model_changed)
-        voice_layout.addRow("识别模型:", self._whisper_combo)
+        voice_layout.addRow(tr("识别模型") + ":", self._whisper_combo)
 
         whisper_hint = QLabel(
-            "提示: 模型越大准确度越高，但需要更多内存和计算时间。\n"
-            "首次使用时会自动下载模型（需要网络）。"
+            tr("提示: 模型越大准确度越高，但需要更多内存和计算时间。") + "\n"
+            + tr("首次使用时会自动下载模型（需要网络）。")
         )
         whisper_hint.setWordWrap(True)
         whisper_hint.setStyleSheet("font-size: 11px; color: gray;")
@@ -303,14 +366,14 @@ class SettingsDialog(QDialog):
         layout.addWidget(voice_group)
 
         # ---------- 快捷键 ----------
-        hotkey_group = QGroupBox("快捷键")
+        hotkey_group = QGroupBox(tr("快捷键"))
         hotkey_layout = QFormLayout(hotkey_group)
 
         self._hotkey_edit = QLineEdit(self._current_hotkey)
         self._hotkey_edit.setPlaceholderText("例如: Win+Shift+Space")
-        hotkey_layout.addRow("唤起窗口:", self._hotkey_edit)
+        hotkey_layout.addRow(tr("唤起窗口") + ":", self._hotkey_edit)
 
-        apply_hk_btn = QPushButton("应用")
+        apply_hk_btn = QPushButton(tr("应用"))
         apply_hk_btn.clicked.connect(self._on_hotkey_apply)
         hotkey_layout.addRow("", apply_hk_btn)
 
@@ -321,7 +384,19 @@ class SettingsDialog(QDialog):
 
     def _on_theme_changed(self, index: int) -> None:
         """主题切换。"""
-        theme_map = {0: "light", 1: "dark", 2: "system"}
+        theme_map = {
+            0: "light",
+            1: "dark",
+            2: "system",
+            3: "ocean_blue",
+            4: "forest_green",
+            5: "sunset_orange",
+            6: "purple_dream",
+            7: "pink_rose",
+            8: "minimal_white",
+            9: "deep_blue",
+            10: "deep_brown",
+        }
         theme_str = theme_map.get(index, "light")
         self.theme_changed.emit(theme_str)
 
@@ -329,22 +404,24 @@ class SettingsDialog(QDialog):
         """语言切换。"""
         lang_code = self._lang_combo.itemData(index)
         if lang_code:
-            from src.i18n import get_i18n_manager
+            from src.i18n import get_i18n_manager, tr as i18n_tr
             i18n = get_i18n_manager()
             if i18n.load_language(lang_code):
                 QMessageBox.information(
-                    self, "语言切换",
-                    f"语言已切换为: {i18n.get_language_name(lang_code)}\n"
-                    "部分界面需要重启后生效。"
+                    self, i18n_tr("语言切换"),
+                    f"{i18n_tr('语言已切换为')}: {i18n.get_language_name(lang_code)}\n"
+                    f"{i18n_tr('部分界面需要重启后生效。')}"
                 )
                 logger.info("语言已切换为: %s", lang_code)
+                # 发出语言切换信号，通知主窗口刷新 UI
+                self.language_changed.emit(lang_code)
 
     def _on_hotkey_apply(self) -> None:
         """应用快捷键。"""
         text = self._hotkey_edit.text().strip()
         if text:
             self.hotkey_changed.emit(text)
-            QMessageBox.information(self, "快捷键", f"快捷键已更新为: {text}")
+            QMessageBox.information(self, tr("快捷键"), f"{tr('快捷键已更新为')}: {text}")
 
     def _on_whisper_model_changed(self, index: int) -> None:
         """切换 Whisper 模型。"""
@@ -542,7 +619,7 @@ class SettingsDialog(QDialog):
         about_text = QLabel(
             "WinClaw - Windows AI 助手\n"
             "基于大语言模型的智能桌面助手\n\n"
-            "GitHub: github.com/your-org/winclaw"
+            "GitHub: https://github.com/wyg5208/WinClaw"
         )
         about_text.setWordWrap(True)
         about_layout.addWidget(about_text)

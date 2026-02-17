@@ -88,8 +88,15 @@ class GlobalHotkey(QObject):
                 # 通过 Qt 信号通知 UI 线程
                 self.triggered.emit()
 
+            # 解析快捷键，捕获可能的解析错误
+            try:
+                parsed_keys = keyboard.HotKey.parse(self._hotkey)
+            except Exception as parse_error:
+                logger.error("解析快捷键失败 '%s': %s", self._hotkey, parse_error)
+                return
+
             hotkey_set = keyboard.HotKey(
-                keyboard.HotKey.parse(self._hotkey),
+                parsed_keys,
                 on_activate,
             )
 

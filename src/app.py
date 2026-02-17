@@ -12,10 +12,10 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.text import Text
-from rich.table import Table
 
 from src import __app_name__, __version__
 from src.core.agent import Agent
+from src.core.command_handler import CommandHandler
 from src.core.generated_files import GeneratedFilesManager
 from src.models.registry import ModelRegistry
 from src.tools.registry import create_default_registry
@@ -151,12 +151,25 @@ def print_help() -> None:
     """打印帮助信息。"""
     help_text = """[dim]命令：
   /help       显示此帮助
-  /model      查看/切换当前模型
+  /model      查看模型列表（带序号）
+  /model 1    切换到第1个模型
+  /model xxx  按名称/key模糊匹配切换模型
   /tools      查看已注册的工具
   /usage      查看 token 用量和费用
   /generated  查看生成空间（已生成的文件）
   /clear      清空对话历史
   /quit       退出程序
+
+快捷工具命令：
+  /stats [today|week|month]  查看使用统计
+  /history [关键词]          搜索聊天历史
+  /diary [today|week|month]  查看日记
+  /finance [today|week|month|year]  查看记账汇总
+  /health [today|week]       查看健康数据
+  /med                       查看今日服药计划
+  /cron                      查看定时任务列表
+  /weather <城市>            查询天气（如 /weather 北京）
+  /time                      获取当前日期时间
 
 附件命令：
   /attach <路径>     添加文件附件
@@ -179,6 +192,11 @@ async def run_cli() -> None:
 
     model_registry = ModelRegistry()
     tool_registry = create_default_registry()
+    
+    # 为 CronTool 设置 Agent 依赖（用于执行 AI 任务）
+    cron_tool = tool_registry.get_tool("cron")
+    if cron_tool and hasattr(cron_tool, "set_agent_dependencies"):
+        cron_tool.set_agent_dependencies(model_registry, tool_registry)
 
     # 初始化附件管理器 (CLI 模式不需要 QApplication)
     attachment_manager = CliAttachmentManager()
@@ -226,6 +244,15 @@ async def run_cli() -> None:
 
     agent.event_bus.on("file_generated", _on_file_generated)
 
+    # 初始化命令处理器
+    cmd_handler = CommandHandler(
+        tool_registry=tool_registry,
+        model_registry=model_registry,
+        attachment_manager=attachment_manager,
+        agent=agent,
+    )
+    cmd_handler.set_generated_files_manager(generated_files_mgr)
+
     # 主循环
     while True:
         try:
@@ -236,137 +263,19 @@ async def run_cli() -> None:
 
         if not user_input:
             continue
-
+        
         # 处理命令
         if user_input.startswith("/"):
-            cmd = user_input.lower().split()[0]
-
-            if cmd in ("/quit", "/exit", "/q"):
+            result = await cmd_handler.execute(user_input)
+            if result.is_quit:
                 console.print("[dim]再见！[/dim]")
                 break
-
-            elif cmd == "/help":
-                print_help()
-                continue
-
-            elif cmd == "/model":
-                parts = user_input.split(maxsplit=1)
-                if len(parts) > 1:
-                    new_key = parts[1].strip()
-                    if model_registry.get(new_key):
-                        agent.model_key = new_key
-                        cfg = model_registry.get(new_key)
-                        console.print(f"[green]已切换到模型: {cfg.name}[/green]")
-                    else:
-                        console.print(f"[red]未知模型: {new_key}[/red]")
-                        console.print("可用模型:")
-                        for m in model_registry.list_models():
-                            marker = " ← 当前" if m.key == agent.model_key else ""
-                            console.print(f"  {m.key}: {m.name}{marker}")
-                else:
-                    console.print(f"当前模型: [cyan]{agent.model_key}[/cyan]")
-                    console.print("可用模型:")
-                    for m in model_registry.list_models():
-                        marker = " [green]← 当前[/green]" if m.key == agent.model_key else ""
-                        fc = "✓" if m.supports_function_calling else "✗"
-                        console.print(
-                            f"  [bold]{m.key}[/bold]: {m.name} "
-                            f"(FC:{fc}, ctx:{m.context_window // 1000}k, "
-                            f"${m.cost_input}/{m.cost_output}){marker}"
-                        )
-                continue
-
-            elif cmd == "/tools":
-                console.print(tool_registry.get_tools_summary())
-                continue
-
-            elif cmd == "/usage":
-                summary = model_registry.get_usage_summary()
-                console.print(
-                    f"总调用: {summary['total_calls']} 次 | "
-                    f"总 Token: {summary['total_tokens']:,} | "
-                    f"总费用: ${summary['total_cost_usd']:.6f}"
-                )
-                continue
-
-            elif cmd == "/clear":
-                agent.reset()
-                console.print("[dim]对话历史已清空[/dim]")
-                continue
-
-            elif cmd in ("/generated", "/gen", "/space"):
-                # 查看生成空间
-                if generated_files_mgr.count == 0:
-                    console.print("[dim]暂无生成文件[/dim]")
-                else:
-                    gen_table = Table(title=f"📂 生成空间 ({generated_files_mgr.count} 个文件)")
-                    gen_table.add_column("#", style="dim", width=4)
-                    gen_table.add_column("类型", width=4)
-                    gen_table.add_column("文件名", style="white")
-                    gen_table.add_column("大小", style="dim", width=10)
-                    gen_table.add_column("来源", style="cyan", width=16)
-                    gen_table.add_column("时间", style="dim", width=10)
-
-                    for i, f in enumerate(generated_files_mgr.files, 1):
-                        tool_src = f.source_tool
-                        if f.source_action:
-                            tool_src += f".{f.source_action}"
-                        time_part = f.created_at.split("T")[-1] if "T" in f.created_at else f.created_at
-                        gen_table.add_row(
-                            str(i), f.get_icon(), f.name,
-                            f.size_display(), tool_src, time_part,
-                        )
-                    console.print(gen_table)
-                    console.print(f"[dim]生成空间目录: {generated_files_mgr.space_dir}[/dim]")
-                continue
-
-            elif cmd == "/attach":
-                # 添加附件
-                parts = user_input.split(maxsplit=1)
-                if len(parts) > 1:
-                    file_path = parts[1].strip().strip('"').strip("'")
-                    ok, msg = attachment_manager.add_file(file_path)
-                    if ok:
-                        console.print(f"[green]✓[/green] {msg}")
-                    else:
-                        console.print(f"[red]✗[/red] {msg}")
-                else:
-                    console.print("[yellow]用法: /attach <文件路径>[/yellow]")
-                    console.print("示例: /attach D:\\test\\image.png")
-                continue
-
-            elif cmd == "/attachments":
-                # 查看附件列表
-                if attachment_manager.count == 0:
-                    console.print("[dim]当前没有附件[/dim]")
-                else:
-                    table = Table(title=f"📎 附件列表 ({attachment_manager.count})")
-                    table.add_column("类型", style="cyan", width=6)
-                    table.add_column("文件名", style="white")
-                    table.add_column("大小", style="dim", width=10)
-                    table.add_column("路径", style="dim")
-                    
-                    for att in attachment_manager.attachments:
-                        table.add_row(
-                            att.get_icon(),
-                            att.name,
-                            att.size_display(),
-                            att.path
-                        )
-                    console.print(table)
-                continue
-
-            elif cmd in ("/clear_attach", "/clear_attachments"):
-                # 清空附件
-                count = attachment_manager.count
-                attachment_manager.clear()
-                console.print(f"[dim]已清空 {count} 个附件[/dim]")
-                continue
-
+            if result.success:
+                console.print(result.output)
             else:
-                console.print(f"[red]未知命令: {cmd}[/red]，输入 /help 查看帮助")
-                continue
-
+                console.print(f"[red]{result.output}[/red]")
+            continue
+        
         # 发送给 Agent（流式输出）
         # 构建带附件的消息
         full_message = user_input
@@ -441,15 +350,6 @@ async def run_cli() -> None:
                 f" | 累计 ${cost:.6f}[/dim]"
             )
         console.print()
-
-
-def _json_dumps_short(obj: dict, max_len: int = 80) -> str:
-    """简短的 JSON 字符串化。"""
-    import json
-    s = json.dumps(obj, ensure_ascii=False)
-    if len(s) > max_len:
-        return s[:max_len] + "..."
-    return s
 
 
 def main() -> None:

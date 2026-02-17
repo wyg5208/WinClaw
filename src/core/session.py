@@ -166,6 +166,25 @@ class SessionManager:
         logger.info("删除会话: %s", session_id)
         return True
 
+    def update_system_prompt(self, new_prompt: str) -> None:
+        """更新当前会话的 System Prompt。
+
+        用于动态构建 System Prompt，根据用户意图注入不同的扩展模块。
+
+        Args:
+            new_prompt: 新的 System Prompt 内容
+        """
+        session = self.current_session
+        # 更新内部存储
+        self._system_prompt = new_prompt
+        # 更新会话中的 system 消息
+        if session.messages and session.messages[0].get("role") == "system":
+            session.messages[0]["content"] = new_prompt
+        else:
+            # 如果没有 system 消息，在开头插入
+            session.messages.insert(0, {"role": "system", "content": new_prompt})
+        logger.debug("已更新 System Prompt (长度: %d)", len(new_prompt))
+
     @property
     def current_session(self) -> Session:
         """获取当前会话。"""
@@ -279,18 +298,51 @@ class SessionManager:
             截断后的消息列表
         """
         session = self._get_session(session_id)
-        limit = max_tokens or self._context_window
+        # 预留 5% 安全余量（放宽限制以充分利用上下文窗口）
+        limit = int((max_tokens or self._context_window) * 0.95)
 
-        # 估算 token 数（简单方法：字符数 / 3）
+        # 计算 token 估算（使用更保守的系数：中文字符约 1.5 字/token）
         messages = session.messages
-        total_chars = sum(len(str(m.get("content", ""))) for m in messages)
-        estimated_tokens = total_chars // 3
+        estimated_tokens = self._estimate_tokens(messages)
 
         if estimated_tokens <= limit:
             return list(messages)
 
         # 需要截断：保留 system prompt + 最近的消息
+        logger.warning(
+            "消息超限，触发截断: 估算 %d tokens > 限制 %d tokens",
+            estimated_tokens, limit
+        )
         return self._truncate_messages(messages, limit)
+
+    def _estimate_tokens(self, messages: list[dict[str, Any]]) -> int:
+        """估算消息列表的 token 数量。
+
+        使用合理的估算方式：
+        - 中文字符：约 1 字/token（放宽估算）
+        - 英文字符：约 4 字符/token
+        - tool_calls 参数也要计算
+        - 基础开销：每条消息约 4 tokens
+        """
+        total = 0
+        for msg in messages:
+            # content 字段
+            content = str(msg.get("content", "") or "")
+            # 使用更合理的系数：字符数 / 3（平衡中英文）
+            total += len(content) // 3
+
+            # tool_calls 字段
+            tool_calls = msg.get("tool_calls", [])
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                args = str(func.get("arguments", ""))
+                total += len(args) // 2
+                total += len(func.get("name", ""))
+
+            # 消息基础开销
+            total += 4
+
+        return total
 
     def clear_messages(self, session_id: str = "") -> None:
         """清空当前会话的消息（保留 system prompt）。"""
@@ -344,8 +396,8 @@ class SessionManager:
             system_msg = messages[0]
             messages = messages[1:]
 
-        # 计算可用字符数
-        remaining_chars = token_limit * 3  # 反向估算字符限制
+        # 计算可用字符数（使用保守估算：字符数 / 2）
+        remaining_chars = token_limit * 2  # 反向估算字符限制
         if system_msg:
             remaining_chars -= len(str(system_msg.get("content", "")))
 
@@ -367,6 +419,60 @@ class SessionManager:
         truncated_count = len(messages) - (len(result) - (1 if system_msg else 0))
         if truncated_count > 0:
             logger.info("截断了 %d 条旧消息以适应上下文窗口", truncated_count)
+
+        # 验证消息结构完整性
+        result = self._validate_message_structure(result)
+
+        return result
+
+    def _validate_message_structure(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """验证并修复消息结构完整性。
+
+        确保消息列表满足 OpenAI API 的要求：
+        1. 以 system 或 user 消息开始
+        2. tool 消息前面必须有带 tool_calls 的 assistant 消息
+        """
+        if not messages:
+            return messages
+
+        result = []
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
+            role = msg.get("role", "")
+
+            # 跳过开头不是 system/user 的消息
+            if not result and role not in ("system", "user"):
+                i += 1
+                continue
+
+            # 处理 assistant 消息
+            if role == "assistant":
+                tool_calls = msg.get("tool_calls", [])
+                if tool_calls:
+                    # 收集所有对应的 tool 消息
+                    result.append(msg)
+                    tool_call_ids = {tc.get("id") for tc in tool_calls}
+                    i += 1
+                    # 添加对应的 tool 消息
+                    while i < len(messages):
+                        next_msg = messages[i]
+                        if next_msg.get("role") == "tool":
+                            # 检查 tool_call_id 是否匹配
+                            if next_msg.get("tool_call_id") in tool_call_ids:
+                                result.append(next_msg)
+                                i += 1
+                            else:
+                                # 不匹配的 tool 消息，跳过
+                                i += 1
+                        else:
+                            break
+                else:
+                    result.append(msg)
+                    i += 1
+            else:
+                result.append(msg)
+                i += 1
 
         return result
 

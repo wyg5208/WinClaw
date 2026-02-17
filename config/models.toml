@@ -7,6 +7,14 @@
 # ============================================================================
 # DeepSeek（默认首选，性价比最高）
 # ============================================================================
+# 每个模型定义在 [models.<key>] 节下
+# 必填字段: id, name, provider, api_type
+# 可选字段: base_url, api_key_env, input_types, supports_function_calling,
+#           context_window, max_tokens, cost_input, cost_output, tags
+
+# ============================================================================
+# DeepSeek（默认首选，性价比最高）
+# ============================================================================
 
 [models.deepseek-chat]
 id = "deepseek/deepseek-chat"
@@ -148,32 +156,53 @@ cost_input = 1.25
 cost_output = 10.0
 tags = ["multimodal", "function-calling"]
 
+
+
 # ============================================================================
-# 本地模型（Ollama）
+# Ollama 本地模型
 # ============================================================================
 
-[models.local-qwen]
-id = "ollama/qwen2.5:7b"
-name = "Qwen 2.5 7B (本地)"
+[models.ollama-gemma3-4b]
+id = "ollama/gemma3:4b"
+name = "Gemma3 4B (Ollama)"
 provider = "ollama"
 api_type = "ollama"
+base_url = "http://localhost:11434"
+api_key_env = ""
 input_types = ["text"]
-supports_function_calling = false
+supports_function_calling = true
+context_window = 8192
+max_tokens = 4096
+cost_input = 0.0
+cost_output = 0.0
+tags = ["local", "free", "function-calling"]
+
+[models.ollama-qwen3-latest]
+id = "ollama/qwen3:latest"
+name = "Qwen3 Latest (Ollama)"
+provider = "ollama"
+api_type = "ollama"
+base_url = "http://localhost:11434"
+api_key_env = ""
+input_types = ["text"]
+supports_function_calling = true
 context_window = 32768
 max_tokens = 8192
 cost_input = 0.0
 cost_output = 0.0
-tags = ["free", "local"]
+tags = ["local", "free", "function-calling"]
 
-[models.local-llama]
-id = "ollama/llama3.1:8b"
-name = "Llama 3.1 8B (本地)"
+[models.ollama-glm4-latest]
+id = "ollama/glm4:latest"
+name = "GLM4 Latest (Ollama)"
 provider = "ollama"
 api_type = "ollama"
+base_url = "http://localhost:11434"
+api_key_env = ""
 input_types = ["text"]
 supports_function_calling = false
-context_window = 131072
-max_tokens = 8192
+context_window = 8192
+max_tokens = 4096
 cost_input = 0.0
 cost_output = 0.0
-tags = ["free", "local"]
+tags = ["local", "free"]

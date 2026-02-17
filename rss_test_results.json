@@ -1,0 +1,435 @@
+{
+  "summary": {
+    "total_feeds": 16,
+    "successful_feeds": 13,
+    "failed_feeds": 3,
+    "success_rate": 81.25,
+    "average_response_time": 0.56,
+    "categories": {
+      "综合平台": {
+        "total": 2,
+        "success": 0
+      },
+      "新闻": {
+        "total": 2,
+        "success": 1
+      },
+      "科技编程": {
+        "total": 1,
+        "success": 1
+      },
+      "科技生活": {
+        "total": 1,
+        "success": 1
+      },
+      "社区问答": {
+        "total": 1,
+        "success": 1
+      },
+      "技术社区": {
+        "total": 1,
+        "success": 1
+      },
+      "技术博客": {
+        "total": 2,
+        "success": 2
+      },
+      "国际新闻": {
+        "total": 1,
+        "success": 1
+      },
+      "科技新闻": {
+        "total": 1,
+        "success": 1
+      },
+      "技术新闻": {
+        "total": 1,
+        "success": 1
+      },
+      "游戏开发": {
+        "total": 1,
+        "success": 1
+      },
+      "科技媒体": {
+        "total": 1,
+        "success": 1
+      },
+      "游戏文化": {
+        "total": 1,
+        "success": 1
+      }
+    },
+    "test_time": "2026-02-16 09:25:39"
+  },
+  "results": [
+    {
+      "name": "全文RSS导航",
+      "url": "https://quanwenrss.com/",
+      "category": "综合平台",
+      "status": "parse_error",
+      "response_time": 1.11,
+      "entries_count": 0,
+      "last_updated": null,
+      "error": "<unknown>:43:78: not well-formed (invalid token)",
+      "sample_entries": []
+    },
+    {
+      "name": "FeedSpot RSS目录",
+      "url": "https://rss.feedspot.com/rss_directory/",
+      "category": "综合平台",
+      "status": "parse_error",
+      "response_time": 2.1,
+      "entries_count": 0,
+      "last_updated": null,
+      "error": "<unknown>:8:14: not well-formed (invalid token)",
+      "sample_entries": []
+    },
+    {
+      "name": "Solidot",
+      "url": "https://www.solidot.org/index.rss",
+      "category": "新闻",
+      "status": "success",
+      "response_time": 0.84,
+      "entries_count": 16,
+      "last_updated": "2026-02-16 01:25:27",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "地球暖化加速的原因",
+          "link": "https://www.solidot.org/story?sid=83566",
+          "published": "Sun, 15 Feb 2026 23:02:31 +0800"
+        },
+        {
+          "title": "在高危漏洞披露前电信公司提前屏蔽 Telnet 流量",
+          "link": "https://www.solidot.org/story?sid=83565",
+          "published": "Sun, 15 Feb 2026 22:14:07 +0800"
+        },
+        {
+          "title": "欧盟采取行动禁用无限滚动",
+          "link": "https://www.solidot.org/story?sid=83564",
+          "published": "Sun, 15 Feb 2026 21:44:00 +0800"
+        }
+      ]
+    },
+    {
+      "name": "煎蛋",
+      "url": "http://jandan.net/feed",
+      "category": "新闻",
+      "status": "http_error",
+      "response_time": 0.23,
+      "entries_count": 0,
+      "last_updated": null,
+      "error": "HTTP 403",
+      "sample_entries": []
+    },
+    {
+      "name": "阮一峰的网络日志",
+      "url": "https://www.ruanyifeng.com/blog/atom.xml",
+      "category": "科技编程",
+      "status": "success",
+      "response_time": 0.33,
+      "entries_count": 3,
+      "last_updated": "2026-02-14 11:53:29",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "字节全家桶 Seed 2.0 + TRAE 玩转 Skill",
+          "link": "http://www.ruanyifeng.com/blog/2026/02/seed-2.0.html",
+          "published": "2026-02-14T11:51:22Z"
+        },
+        {
+          "title": "科技爱好者周刊（第 385 期）：马斯克害怕中国车企吗？",
+          "link": "http://www.ruanyifeng.com/blog/2026/02/weekly-issue-385.html",
+          "published": "2026-02-12T18:34:10Z"
+        },
+        {
+          "title": "智谱旗舰 GLM-5 实测：对比 Opus 4.6 和 GPT-5.3-Codex",
+          "link": "http://www.ruanyifeng.com/blog/2026/02/glm-5.html",
+          "published": "2026-02-12T01:26:13Z"
+        }
+      ]
+    },
+    {
+      "name": "少数派",
+      "url": "https://sspai.com/feed",
+      "category": "科技生活",
+      "status": "success",
+      "response_time": 0.2,
+      "entries_count": 10,
+      "last_updated": "2026-02-15 02:00:00",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "春节玩什么 | 过年聚会担心冷场？不妨试试这 10 款多人游戏",
+          "link": "https://sspai.com/post/106374",
+          "published": "Sun, 15 Feb 2026 10:00:00 +0800"
+        },
+        {
+          "title": "新年拒酒指南：除了头孢还有什么拒酒的好借口",
+          "link": "https://sspai.com/post/106300",
+          "published": "Sat, 14 Feb 2026 11:00:00 +0800"
+        },
+        {
+          "title": "本周看什么 | 最近值得一看的 8 部作品",
+          "link": "https://sspai.com/post/106352",
+          "published": "Fri, 13 Feb 2026 17:31:26 +0800"
+        }
+      ]
+    },
+    {
+      "name": "知乎日报",
+      "url": "https://www.zhihu.com/rss",
+      "category": "社区问答",
+      "status": "success",
+      "response_time": 0.17,
+      "entries_count": 0,
+      "last_updated": null,
+      "error": null,
+      "sample_entries": []
+    },
+    {
+      "name": "V2EX",
+      "url": "https://www.v2ex.com/index.xml",
+      "category": "技术社区",
+      "status": "success",
+      "response_time": 0.29,
+      "entries_count": 50,
+      "last_updated": "2026-02-16 01:20:36",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "[问与答] 买了 Gemini Pro 付费，用不了 API Key 吗？",
+          "link": "https://www.v2ex.com/t/1192990#reply0",
+          "published": "2026-02-16T01:20:36Z"
+        },
+        {
+          "title": "[宽带症候群] 南京联通进小黑屋了",
+          "link": "https://www.v2ex.com/t/1192989#reply0",
+          "published": "2026-02-16T01:04:29Z"
+        },
+        {
+          "title": "[分享创造] 做了一个中文 AI 工具评测站 aitoolcn.com， 20+ 款工具亲测对比",
+          "link": "https://www.v2ex.com/t/1192987#reply1",
+          "published": "2026-02-16T00:23:39Z"
+        }
+      ]
+    },
+    {
+      "name": "GitHub博客",
+      "url": "https://github.blog/feed/",
+      "category": "技术博客",
+      "status": "success",
+      "response_time": 0.31,
+      "entries_count": 10,
+      "last_updated": "2026-02-13 19:45:18",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "Automate repository tasks with GitHub Agentic Workflows",
+          "link": "https://github.blog/ai-and-ml/automate-repository-tasks-with-github-agentic-workflows/",
+          "published": "Fri, 13 Feb 2026 14:00:00 +0000"
+        },
+        {
+          "title": "Welcome to the Eternal September of open source. Here’s what we plan to do for maintainers.",
+          "link": "https://github.blog/open-source/maintainers/welcome-to-the-eternal-september-of-open-source-heres-what-we-plan-to-do-for-maintainers/",
+          "published": "Thu, 12 Feb 2026 20:14:11 +0000"
+        },
+        {
+          "title": "GitHub availability report: January 2026",
+          "link": "https://github.blog/news-insights/company-news/github-availability-report-january-2026/",
+          "published": "Wed, 11 Feb 2026 23:12:34 +0000"
+        }
+      ]
+    },
+    {
+      "name": "BBC新闻",
+      "url": "http://feeds.bbci.co.uk/news/rss.xml",
+      "category": "国际新闻",
+      "status": "success",
+      "response_time": 0.52,
+      "entries_count": 39,
+      "last_updated": "2026-02-16 01:25:29",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "No free pass for internet platforms on child safety, Starmer says",
+          "link": "https://www.bbc.com/news/articles/cvg38x13x5yo?at_medium=RSS&at_campaign=rss",
+          "published": "Sun, 15 Feb 2026 22:34:34 GMT"
+        },
+        {
+          "title": "Team GB clinches second gold of day at Winter Olympics",
+          "link": "https://www.bbc.com/sport/articles/cm2x7m17jydo?at_medium=RSS&at_campaign=rss",
+          "published": "Sun, 15 Feb 2026 20:06:25 GMT"
+        },
+        {
+          "title": "FBI analysing recovered glove that appears to match those worn in Guthrie suspect video",
+          "link": "https://www.bbc.com/news/articles/c5yrv2g16e2o?at_medium=RSS&at_campaign=rss",
+          "published": "Sun, 15 Feb 2026 20:39:35 GMT"
+        }
+      ]
+    },
+    {
+      "name": "纽约时报科技",
+      "url": "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml",
+      "category": "科技新闻",
+      "status": "success",
+      "response_time": 1.06,
+      "entries_count": 24,
+      "last_updated": "2026-02-16 01:23:35",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "Homeland Security Demands Social Media Sites Reveal Names Behind Anti-ICE Posts",
+          "link": "https://www.nytimes.com/2026/02/13/technology/dhs-anti-ice-social-media.html",
+          "published": "Fri, 13 Feb 2026 23:24:03 +0000"
+        },
+        {
+          "title": "Meta Plans to Add Facial Recognition Technology to Its Smart Glasses",
+          "link": "https://www.nytimes.com/2026/02/13/technology/meta-facial-recognition-smart-glasses.html",
+          "published": "Sat, 14 Feb 2026 19:01:18 +0000"
+        },
+        {
+          "title": "Iran Turns to Digital Surveillance Tools to Track Down Protesters",
+          "link": "https://www.nytimes.com/2026/02/13/technology/iran-protests-surveillance-facial-recognition.html",
+          "published": "Fri, 13 Feb 2026 10:00:38 +0000"
+        }
+      ]
+    },
+    {
+      "name": "Hacker News",
+      "url": "https://news.ycombinator.com/rss",
+      "category": "技术新闻",
+      "status": "success",
+      "response_time": 0.92,
+      "entries_count": 30,
+      "last_updated": null,
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "I’m joining OpenAI",
+          "link": "https://steipete.me/posts/2026/openclaw",
+          "published": "Sun, 15 Feb 2026 21:54:15 +0000"
+        },
+        {
+          "title": "Magnus Carlsen Wins the Freestyle (Chess960) World Championship",
+          "link": "https://www.fide.com/magnus-carlsen-wins-2026-fide-freestyle-world-championship/",
+          "published": "Sun, 15 Feb 2026 22:17:10 +0000"
+        },
+        {
+          "title": "Pink noise reduces REM sleep and may harm sleep quality",
+          "link": "https://www.pennmedicine.org/news/pink-noise-reduces-rem-sleep-and-may-harm-sleep-quality",
+          "published": "Mon, 16 Feb 2026 00:35:12 +0000"
+        }
+      ]
+    },
+    {
+      "name": "酷壳",
+      "url": "https://coolshell.cn/feed",
+      "category": "技术博客",
+      "status": "success",
+      "response_time": 0.36,
+      "entries_count": 15,
+      "last_updated": "2023-05-09 04:25:32",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "是微服务架构不香还是云不香？",
+          "link": "https://coolshell.cn/articles/22422.html",
+          "published": "Mon, 08 May 2023 09:52:06 +0000"
+        },
+        {
+          "title": "我看ChatGPT: 为啥谷歌掉了千亿美金",
+          "link": "https://coolshell.cn/articles/22398.html",
+          "published": "Sat, 11 Feb 2023 16:31:16 +0000"
+        },
+        {
+          "title": "聊聊 nostr 和 审查",
+          "link": "https://coolshell.cn/articles/22367.html",
+          "published": "Fri, 03 Feb 2023 07:46:13 +0000"
+        }
+      ]
+    },
+    {
+      "name": "云风博客",
+      "url": "https://blog.codingnow.com/atom.xml",
+      "category": "游戏开发",
+      "status": "success",
+      "response_time": 1.64,
+      "entries_count": 15,
+      "last_updated": "2026-02-11 10:46:39",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "日常锻炼的一些记录",
+          "link": "https://blog.codingnow.com/2026/02/physical_training.html",
+          "published": "2026-02-11T09:28:25Z"
+        },
+        {
+          "title": "介绍几款单人桌游",
+          "link": "https://blog.codingnow.com/2026/01/solo_boardgame.html",
+          "published": "2026-01-24T13:08:25Z"
+        },
+        {
+          "title": "和 AI 聊游戏设计",
+          "link": "https://blog.codingnow.com/2026/01/ai_game_design.html",
+          "published": "2026-01-15T08:05:08Z"
+        }
+      ]
+    },
+    {
+      "name": "爱范儿",
+      "url": "https://www.ifanr.com/feed",
+      "category": "科技媒体",
+      "status": "success",
+      "response_time": 0.3,
+      "entries_count": 20,
+      "last_updated": "2026-02-15 09:07:03",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "几天手搓的Claude Code拓麻歌子火了：成本几乎为0，一句话做硬件时代来了",
+          "link": "https://www.ifanr.com/1655257?utm_source=rss&utm_medium=rss&utm_campaign=",
+          "published": "Sun, 15 Feb 2026 09:06:37 +0000"
+        },
+        {
+          "title": "我用豆包大模型2.0手搓了macOS，Seedance 2.0后字节再送春节AI大礼",
+          "link": "https://www.ifanr.com/1655221?utm_source=rss&utm_medium=rss&utm_campaign=",
+          "published": "Sat, 14 Feb 2026 12:03:20 +0000"
+        },
+        {
+          "title": "真我 Neo8 体验：从性能、显示到影像来了一次全面升级，真正全面的性价比旗舰",
+          "link": "https://www.ifanr.com/1655222?utm_source=rss&utm_medium=rss&utm_campaign=",
+          "published": "Sat, 14 Feb 2026 05:56:17 +0000"
+        }
+      ]
+    },
+    {
+      "name": "机核",
+      "url": "https://www.gcores.com/rss",
+      "category": "游戏文化",
+      "status": "success",
+      "response_time": 0.39,
+      "entries_count": 20,
+      "last_updated": "2026-02-15 15:00:00",
+      "error": null,
+      "sample_entries": [
+        {
+          "title": "上头下棋",
+          "link": "https://www.gcores.com/radios/210497",
+          "published": "Sun, 15 Feb 2026 23:00:00 +0800"
+        },
+        {
+          "title": "打破规则，就会意味着……：机核采访《静谧田园》制作人",
+          "link": "https://www.gcores.com/articles/210858",
+          "published": "Sun, 15 Feb 2026 21:00:21 +0800"
+        },
+        {
+          "title": "献给新世界的勇者，告别旧世界的记忆：小评《DQ7 Reimagined》",
+          "link": "https://www.gcores.com/articles/210856",
+          "published": "Sun, 15 Feb 2026 19:18:06 +0800"
+        }
+      ]
+    }
+  ],
+  "test_timestamp": "2026-02-16T09:25:39.610968"
+}

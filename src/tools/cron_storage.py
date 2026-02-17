@@ -28,6 +28,12 @@ class TriggerType(str, Enum):
     DATE = "date"
 
 
+class JobType(str, Enum):
+    """任务类型。"""
+    COMMAND = "command"  # 外部命令任务
+    AI_TASK = "ai_task"  # AI 任务
+
+
 class JobStatus(str, Enum):
     """任务状态。"""
     ACTIVE = "active"
@@ -52,6 +58,13 @@ class StoredJob:
     created_at: datetime
     last_run: datetime | None
     status: JobStatus
+    # 新增字段：支持 AI 任务
+    job_type: JobType = JobType.COMMAND  # 任务类型：command/ai_task
+    task_instruction: str = ""  # AI 任务指令
+    max_steps: int = 10  # AI 任务最大执行步数
+    result_action: str = "notify"  # 结果处理：notify/append_file/ignore
+    result_file: str = ""  # 结果保存文件路径
+    last_result: str = ""  # 上次执行结果
     
     def to_dict(self) -> dict[str, Any]:
         """转换为字典。"""
@@ -63,13 +76,55 @@ class StoredJob:
             "description": self.description,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_run": self.last_run.isoformat() if self.last_run else None,
+            "last_result": self.last_result,
             "status": self.status.value,
+            "job_type": self.job_type.value,
+            "task_instruction": self.task_instruction,
+            "max_steps": self.max_steps,
+            "result_action": self.result_action,
+            "result_file": self.result_file,
         }
     
     @classmethod
     def from_row(cls, row: tuple) -> StoredJob:
         """从数据库行创建对象。"""
-        job_id, trigger_type, trigger_config, command, description, created_at, last_run, status = row
+        # 兼容旧数据结构：只有8个字段时使用默认值
+        if len(row) == 8:
+            job_id, trigger_type, trigger_config, command, description, created_at, last_run, status = row
+            return cls(
+                job_id=job_id,
+                trigger_type=TriggerType(trigger_type),
+                trigger_config=json.loads(trigger_config) if trigger_config else {},
+                command=command,
+                description=description or "",
+                created_at=datetime.fromisoformat(created_at) if created_at else datetime.now(),
+                last_run=datetime.fromisoformat(last_run) if last_run else None,
+                status=JobStatus(status) if status else JobStatus.ACTIVE,
+            )
+        # 13个字段（旧格式，无last_result）
+        # 顺序: job_id, trigger_type, trigger_config, command, description, created_at, last_run, status, job_type, task_instruction, max_steps, result_action, result_file
+        if len(row) == 13:
+            (job_id, trigger_type, trigger_config, command, description, created_at, last_run, status,
+             job_type, task_instruction, max_steps, result_action, result_file) = row
+            return cls(
+                job_id=job_id,
+                trigger_type=TriggerType(trigger_type),
+                trigger_config=json.loads(trigger_config) if trigger_config else {},
+                command=command,
+                description=description or "",
+                created_at=datetime.fromisoformat(created_at) if created_at else datetime.now(),
+                last_run=datetime.fromisoformat(last_run) if last_run else None,
+                status=JobStatus(status) if status else JobStatus.ACTIVE,
+                job_type=JobType(job_type) if job_type else JobType.COMMAND,
+                task_instruction=task_instruction or "",
+                max_steps=max_steps or 10,
+                result_action=result_action or "notify",
+                result_file=result_file or "",
+            )
+        # 14个字段（新格式，有last_result）
+        # 顺序: job_id, trigger_type, trigger_config, command, description, created_at, last_run, status, last_result, job_type, task_instruction, max_steps, result_action, result_file
+        (job_id, trigger_type, trigger_config, command, description, created_at, last_run, status, last_result,
+         job_type, task_instruction, max_steps, result_action, result_file) = row
         return cls(
             job_id=job_id,
             trigger_type=TriggerType(trigger_type),
@@ -79,6 +134,12 @@ class StoredJob:
             created_at=datetime.fromisoformat(created_at) if created_at else datetime.now(),
             last_run=datetime.fromisoformat(last_run) if last_run else None,
             status=JobStatus(status) if status else JobStatus.ACTIVE,
+            job_type=JobType(job_type) if job_type else JobType.COMMAND,
+            task_instruction=task_instruction or "",
+            max_steps=max_steps or 10,
+            result_action=result_action or "notify",
+            result_file=result_file or "",
+            last_result=last_result or "",
         )
 
 
@@ -143,6 +204,7 @@ class CronStorage:
     def _init_db(self) -> None:
         """初始化数据库表。"""
         with self._get_connection() as conn:
+            # 创建任务表（支持 AI 任务）
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS cron_jobs (
                     job_id TEXT PRIMARY KEY,
@@ -152,9 +214,41 @@ class CronStorage:
                     description TEXT,
                     created_at TEXT NOT NULL,
                     last_run TEXT,
-                    status TEXT NOT NULL DEFAULT 'active'
+                    last_result TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    job_type TEXT NOT NULL DEFAULT 'command',
+                    task_instruction TEXT DEFAULT '',
+                    max_steps INTEGER DEFAULT 10,
+                    result_action TEXT DEFAULT 'notify',
+                    result_file TEXT DEFAULT ''
                 )
             """)
+            # 尝试添加新列（兼容旧数据库）
+            try:
+                conn.execute("ALTER TABLE cron_jobs ADD COLUMN job_type TEXT NOT NULL DEFAULT 'command'")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE cron_jobs ADD COLUMN task_instruction TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE cron_jobs ADD COLUMN max_steps INTEGER DEFAULT 10")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE cron_jobs ADD COLUMN result_action TEXT DEFAULT 'notify'")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE cron_jobs ADD COLUMN result_file TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE cron_jobs ADD COLUMN last_result TEXT")
+            except sqlite3.OperationalError:
+                pass
+            conn.commit()
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS schedules (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,15 +282,16 @@ class CronStorage:
     
     def save_job(self, job: StoredJob) -> None:
         """保存任务。
-        
+            
         Args:
             job: 要保存的任务
         """
         with self._get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO cron_jobs 
-                (job_id, trigger_type, trigger_config, command, description, created_at, last_run, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (job_id, trigger_type, trigger_config, command, description, created_at, last_run, last_result, status,
+                 job_type, task_instruction, max_steps, result_action, result_file)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 job.job_id,
                 job.trigger_type.value,
@@ -205,7 +300,13 @@ class CronStorage:
                 job.description,
                 job.created_at.isoformat(),
                 job.last_run.isoformat() if job.last_run else None,
+                job.last_result,
                 job.status.value,
+                job.job_type.value,
+                job.task_instruction,
+                job.max_steps,
+                job.result_action,
+                job.result_file,
             ))
             conn.commit()
         logger.debug(f"任务已保存: {job.job_id}")
@@ -220,8 +321,10 @@ class CronStorage:
             任务对象,不存在返回 None
         """
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM cron_jobs WHERE job_id = ?",
+            cursor = conn.execute("""
+                SELECT job_id, trigger_type, trigger_config, command, description, created_at, last_run, status, last_result,
+                       job_type, task_instruction, max_steps, result_action, result_file 
+                FROM cron_jobs WHERE job_id = ?""",
                 (job_id,)
             )
             row = cursor.fetchone()
@@ -237,7 +340,11 @@ class CronStorage:
         """
         jobs = []
         with self._get_connection() as conn:
-            cursor = conn.execute("SELECT * FROM cron_jobs")
+            cursor = conn.execute("""
+                SELECT job_id, trigger_type, trigger_config, command, description, created_at, last_run, status, last_result,
+                       job_type, task_instruction, max_steps, result_action, result_file 
+                FROM cron_jobs
+            """)
             for row in cursor.fetchall():
                 jobs.append(StoredJob.from_row(row))
         return jobs
@@ -250,8 +357,10 @@ class CronStorage:
         """
         jobs = []
         with self._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM cron_jobs WHERE status = ?",
+            cursor = conn.execute("""
+                SELECT job_id, trigger_type, trigger_config, command, description, created_at, last_run, status, last_result,
+                       job_type, task_instruction, max_steps, result_action, result_file 
+                FROM cron_jobs WHERE status = ?""",
                 (JobStatus.ACTIVE.value,)
             )
             for row in cursor.fetchall():
@@ -316,6 +425,24 @@ class CronStorage:
             cursor = conn.execute(
                 "UPDATE cron_jobs SET last_run = ? WHERE job_id = ?",
                 (last_run.isoformat(), job_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def update_last_result(self, job_id: str, result: str) -> bool:
+        """更新任务执行结果。
+        
+        Args:
+            job_id: 任务ID
+            result: 执行结果文本
+            
+        Returns:
+            是否更新成功
+        """
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE cron_jobs SET last_result = ? WHERE job_id = ?",
+                (result, job_id)
             )
             conn.commit()
             return cursor.rowcount > 0

@@ -3,18 +3,27 @@
 支持:
 - 实时录音（直接传 numpy 数组给 Whisper，无需 ffmpeg）
 - 音频文件转文字（WAV 可用 scipy 读取，其他格式需 ffmpeg）
+- 纯录音并保存文件（record_audio）
+- VAD 语音活动检测，说完自动停止
 - 多语言识别
 - 可选模型大小 (tiny/base/small/medium/large)
 
 Phase 4.6 优化：
 - 延迟导入：whisper/sounddevice/numpy/scipy 仅在实际使用时导入
 - 启动速度大幅提升
+
+Phase 7.0 优化：
+- 新增 record_audio 动作：纯录音生成 WAV 文件
+- VAD（Voice Activity Detection）智能停止：说完自动停止录音
+- 移除固定5秒限制，支持灵活时长
 """
 import asyncio
 import logging
 import os
 import shutil
 import tempfile
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -68,6 +77,7 @@ def _check_ffmpeg() -> bool:
 
 
 from .base import ActionDef, BaseTool, ToolResult, ToolResultStatus
+from .text_utils import to_simplified_chinese
 
 
 class VoiceInputTool(BaseTool):
@@ -76,13 +86,22 @@ class VoiceInputTool(BaseTool):
     name = "voice_input"
     emoji = "🎤"
     title = "语音输入"
-    description = "语音转文字工具,支持实时录音或从音频文件识别"
+    description = "语音转文字工具,支持实时录音、VAD智能录音、纯录音保存文件或从音频文件识别"
+
+    # VAD（语音活动检测）默认参数
+    VAD_SILENCE_THRESHOLD = 0.01    # 静音能量阈值
+    VAD_SILENCE_DURATION = 1.5      # 静音持续时间(秒)触发停止
+    VAD_MIN_RECORDING = 1.0         # 最短录音时长(秒)
+    VAD_MAX_RECORDING = 30.0        # 最大录音时长(秒)
+    VAD_CHUNK_DURATION = 0.1        # 每次检测块时长(秒)
 
     def __init__(self):
         super().__init__()
         self._model: Optional[Any] = None
         self._model_name: str = "base"
         self._sample_rate: int = 16000
+        # 录音中止标志（供外部停止录音）
+        self._stop_recording = False
         # 不在初始化时检查依赖，延迟到实际使用时
 
     def _check_available(self) -> bool:
@@ -105,12 +124,17 @@ class VoiceInputTool(BaseTool):
         return [
             ActionDef(
                 name="record_and_transcribe",
-                description="录制音频并转为文字",
+                description="录制音频并转为文字（支持VAD自动停止：说完自动停止录音）",
                 parameters={
                     "duration": {
                         "type": "number",
-                        "description": "录音时长(秒),默认 5 秒",
-                        "default": 5,
+                        "description": "最大录音时长(秒),VAD模式下为上限,默认30秒",
+                        "default": 30,
+                    },
+                    "auto_stop": {
+                        "type": "boolean",
+                        "description": "是否启用VAD自动检测说话结束,默认True",
+                        "default": True,
                     },
                     "model": {
                         "type": "string",
@@ -121,6 +145,28 @@ class VoiceInputTool(BaseTool):
                     "language": {
                         "type": "string",
                         "description": "语言代码(如 zh/en),留空自动检测",
+                        "default": None,
+                    },
+                },
+                required_params=[],
+            ),
+            ActionDef(
+                name="record_audio",
+                description="录制音频并保存为WAV文件（支持VAD自动停止）",
+                parameters={
+                    "duration": {
+                        "type": "number",
+                        "description": "最大录音时长(秒),默认30秒",
+                        "default": 30,
+                    },
+                    "auto_stop": {
+                        "type": "boolean",
+                        "description": "是否启用VAD自动检测说话结束,默认True",
+                        "default": True,
+                    },
+                    "save_path": {
+                        "type": "string",
+                        "description": "保存路径(留空自动生成到 generated/audio/ 目录)",
                         "default": None,
                     },
                 },
@@ -160,6 +206,8 @@ class VoiceInputTool(BaseTool):
         """执行语音输入操作"""
         if action == "record_and_transcribe":
             return await self._record_and_transcribe(**params)
+        elif action == "record_audio":
+            return await self._record_audio(**params)
         elif action == "transcribe_file":
             return await self._transcribe_file(**params)
         elif action == "list_devices":
@@ -171,32 +219,129 @@ class VoiceInputTool(BaseTool):
                 output=f"可用动作: {[a.name for a in self.get_actions()]}",
             )
 
+    def stop_recording(self) -> None:
+        """外部请求停止当前录音（手动停止按钮调用）。"""
+        self._stop_recording = True
+
+    def _record_with_vad(
+        self,
+        max_duration: float = 30.0,
+        auto_stop: bool = True,
+        silence_threshold: float = VAD_SILENCE_THRESHOLD,
+        silence_duration: float = VAD_SILENCE_DURATION,
+    ) -> tuple:
+        """使用 VAD（语音活动检测）录音。
+
+        在后台线程中同步执行。持续录音直到检测到说完（静音超过阈值），
+        或达到最大时长，或外部调用 stop_recording()。
+
+        Args:
+            max_duration: 最大录音时长(秒)
+            auto_stop: 是否启用VAD自动停止
+            silence_threshold: 静音能量阈值
+            silence_duration: 静音持续多少秒停止
+
+        Returns:
+            (audio_data: numpy float32 array, actual_duration: float)
+        """
+        self._stop_recording = False
+        chunk_samples = int(self.VAD_CHUNK_DURATION * self._sample_rate)
+        max_samples = int(max_duration * self._sample_rate)
+        min_samples = int(self.VAD_MIN_RECORDING * self._sample_rate)
+        silence_samples_needed = int(silence_duration / self.VAD_CHUNK_DURATION)
+
+        all_chunks = []
+        total_samples = 0
+        silence_count = 0
+        has_speech = False
+
+        logger.info(
+            "开始VAD录音: max=%.1fs, auto_stop=%s, threshold=%.4f, silence=%.1fs",
+            max_duration, auto_stop, silence_threshold, silence_duration,
+        )
+
+        # 打开音频流
+        stream = _sd.InputStream(
+            samplerate=self._sample_rate,
+            channels=1,
+            dtype="float32",
+            blocksize=chunk_samples,
+        )
+        stream.start()
+
+        try:
+            while total_samples < max_samples and not self._stop_recording:
+                chunk, overflowed = stream.read(chunk_samples)
+                all_chunks.append(chunk.copy())
+                total_samples += len(chunk)
+
+                # 计算 RMS 能量
+                energy = float(_np.sqrt(_np.mean(chunk ** 2)))
+
+                if energy > silence_threshold:
+                    silence_count = 0
+                    has_speech = True
+                else:
+                    silence_count += 1
+
+                # VAD 自动停止：已经有语音输入，且连续静音超过阈值
+                if auto_stop and has_speech and total_samples >= min_samples:
+                    if silence_count >= silence_samples_needed:
+                        logger.info("VAD 检测到说话结束（静音 %.1f 秒）", silence_count * self.VAD_CHUNK_DURATION)
+                        break
+        finally:
+            stream.stop()
+            stream.close()
+
+        if not all_chunks:
+            return _np.array([], dtype=_np.float32), 0.0
+
+        audio_data = _np.concatenate(all_chunks, axis=0).flatten().astype(_np.float32)
+        actual_duration = len(audio_data) / self._sample_rate
+        logger.info("录音完成: 实际时长=%.1fs, 数据长度=%d", actual_duration, len(audio_data))
+        return audio_data, actual_duration
+
     async def _record_and_transcribe(
-        self, duration: float = 5.0, model: str = "base", language: Optional[str] = None
+        self, duration: float = 30.0, auto_stop: bool = True,
+        model: str = "base", language: Optional[str] = None
     ) -> ToolResult:
-        """录制音频并转文字（直接传 numpy 数组，无需 ffmpeg）"""
+        """录制音频并转文字（支持 VAD 自动停止）。
+
+        Args:
+            duration: 最大录音时长(秒), VAD模式下为上限
+            auto_stop: 是否启用 VAD 自动检测说话结束
+            model: Whisper 模型
+            language: 语言代码
+        """
         try:
             # 检查依赖
             self._check_available()
 
-            # 录音
-            duration = max(1, min(duration, 60))  # 限制 1-60 秒
-            frames = int(duration * self._sample_rate)
+            # 限制时长
+            duration = max(1, min(duration, 120))
 
-            logger.info("开始录音: %.1f 秒, 采样率 %d", duration, self._sample_rate)
+            logger.info("开始录音: max=%.1fs, auto_stop=%s, 采样率=%d",
+                        duration, auto_stop, self._sample_rate)
 
-            # 在线程池中执行阻塞的录音操作
+            # 在线程池中使用 VAD 录音
             loop = asyncio.get_event_loop()
-            audio_data = await loop.run_in_executor(
-                None, lambda: _sd.rec(frames, samplerate=self._sample_rate, channels=1, dtype="float32")
+            audio_data, actual_duration = await loop.run_in_executor(
+                None,
+                lambda: self._record_with_vad(
+                    max_duration=duration,
+                    auto_stop=auto_stop,
+                )
             )
-            await loop.run_in_executor(None, _sd.wait)
 
-            # 转为一维 float32 numpy 数组 (Whisper 要求的格式)
-            audio_data = audio_data.flatten().astype(_np.float32)
+            if len(audio_data) == 0 or actual_duration < 0.3:
+                return ToolResult(
+                    status=ToolResultStatus.SUCCESS,
+                    output="未检测到有效语音",
+                    data={"text": "", "language": "unknown", "duration": actual_duration},
+                )
 
-            logger.info("录音完成, 数据长度: %d, 范围: [%.4f, %.4f]",
-                        len(audio_data), audio_data.min(), audio_data.max())
+            logger.info("录音完成, 实际时长: %.1fs, 数据长度: %d, 范围: [%.4f, %.4f]",
+                        actual_duration, len(audio_data), audio_data.min(), audio_data.max())
 
             # 加载模型
             model_obj = await loop.run_in_executor(None, self._load_model, model)
@@ -213,22 +358,99 @@ class VoiceInputTool(BaseTool):
             text = result["text"].strip()
             detected_language = result.get("language", "unknown")
 
+            # 转换为简体中文
+            text = to_simplified_chinese(text)
+
             logger.info("转录完成: 语言=%s, 文字=%s", detected_language, text[:50])
 
             return ToolResult(
                 status=ToolResultStatus.SUCCESS,
-                output=f"录音转录成功 (时长: {duration}s, 语言: {detected_language})",
+                output=f"录音转录成功 (时长: {actual_duration:.1f}s, 语言: {detected_language})",
                 data={
                     "text": text,
                     "language": detected_language,
-                    "duration": duration,
+                    "duration": actual_duration,
                     "model": model,
+                    "auto_stopped": auto_stop,
                 },
             )
 
         except Exception as e:
             logger.exception("录音转录失败")
             return ToolResult(status=ToolResultStatus.ERROR, error=f"录音转录失败: {e}")
+
+    async def _record_audio(
+        self, duration: float = 30.0, auto_stop: bool = True,
+        save_path: Optional[str] = None,
+    ) -> ToolResult:
+        """纯录音并保存为 WAV 文件。
+
+        Args:
+            duration: 最大录音时长(秒)
+            auto_stop: 是否启用 VAD 自动停止
+            save_path: 保存路径(None 则自动生成)
+        """
+        try:
+            self._check_available()
+
+            duration = max(1, min(duration, 120))
+
+            # 确定保存路径
+            if save_path:
+                out_path = Path(save_path).expanduser().resolve()
+            else:
+                # 自动生成到 generated/audio/ 目录
+                audio_dir = Path.cwd() / "generated" / "audio"
+                audio_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                out_path = audio_dir / f"recording_{timestamp}.wav"
+
+            logger.info("开始纯录音: max=%.1fs, auto_stop=%s, 保存到=%s",
+                        duration, auto_stop, out_path)
+
+            # VAD 录音
+            loop = asyncio.get_event_loop()
+            audio_data, actual_duration = await loop.run_in_executor(
+                None,
+                lambda: self._record_with_vad(
+                    max_duration=duration,
+                    auto_stop=auto_stop,
+                )
+            )
+
+            if len(audio_data) == 0 or actual_duration < 0.3:
+                return ToolResult(
+                    status=ToolResultStatus.SUCCESS,
+                    output="未检测到有效语音，未保存文件",
+                    data={"file_path": None, "duration": 0},
+                )
+
+            # 保存为 WAV 文件（int16 格式）
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            audio_int16 = (_np.clip(audio_data, -1.0, 1.0) * 32767).astype(_np.int16)
+            await loop.run_in_executor(
+                None,
+                lambda: _write_wav(str(out_path), self._sample_rate, audio_int16)
+            )
+
+            file_size_mb = out_path.stat().st_size / (1024 * 1024)
+            logger.info("录音文件已保存: %s (%.2f MB, %.1fs)", out_path, file_size_mb, actual_duration)
+
+            return ToolResult(
+                status=ToolResultStatus.SUCCESS,
+                output=f"录音已保存: {out_path.name} ({actual_duration:.1f}s, {file_size_mb:.2f}MB)",
+                data={
+                    "file_path": str(out_path),
+                    "duration": actual_duration,
+                    "file_size_mb": file_size_mb,
+                    "sample_rate": self._sample_rate,
+                    "format": "wav",
+                },
+            )
+
+        except Exception as e:
+            logger.exception("录音保存失败")
+            return ToolResult(status=ToolResultStatus.ERROR, error=f"录音保存失败: {e}")
 
     def _load_audio_file(self, file_path: str):
         """加载音频文件为 Whisper 要求的 float32 numpy 数组。
@@ -310,6 +532,9 @@ class VoiceInputTool(BaseTool):
 
             text = result["text"].strip()
             detected_language = result.get("language", "unknown")
+
+            # 转换为简体中文
+            text = to_simplified_chinese(text)
 
             ffmpeg_note = "" if _check_ffmpeg() else " (无 ffmpeg, 仅支持 WAV)"
             return ToolResult(

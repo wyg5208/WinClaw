@@ -160,6 +160,12 @@ def create_mcp_bridge_tools(
         if not connection.is_connected:
             continue
 
+        # 幂等性检查：工具已注册则跳过
+        tool_name = f"mcp_{server_name}"
+        if tool_registry.get_tool(tool_name) is not None:
+            logger.debug("MCP 桥接工具已注册，跳过: %s", server_name)
+            continue
+
         # 创建桥接工具
         bridge = MCPBridgeTool(
             server_name=server_name,

@@ -56,7 +56,7 @@
         "BRAVE_API_KEY": "在此填入你的Brave Search API Key"
       },
       "description": "Brave搜索 - 高质量网页搜索（需要免费API Key）",
-      "enabled": false
+      "enabled": true
     },
     "github": {
       "command": "npx",
@@ -76,8 +76,46 @@
         "-y",
         "@modelcontextprotocol/server-puppeteer"
       ],
-      "description": "Puppeteer浏览器 - 高级网页自动化和截图",
+      "description": "Puppeteer浏览器 - 高级网页自动化和截图（已弃用，建议使用playwright）",
       "enabled": false
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@executeautomation/playwright-mcp-server"
+      ],
+      "description": "Playwright浏览器自动化 - 支持143种设备模拟、自然语言控制、截图、JavaScript执行",
+      "enabled": true
+    },
+    "browserbase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@browserbasehq/mcp-server-browserbase"
+      ],
+      "description": "Browserbase云端浏览器 - AI驱动的浏览器自动化，支持隐身模式和全球代理。使用 tools/browserbase_auth_helper.py 创建登录 context",
+      "env": {
+        "BROWSERBASE_API_KEY": "bb_live_0eTR3zDJu4NgC2QCsAP9-h0xdJw",
+        "BROWSERBASE_PROJECT_ID": "2c62e63b-8cc5-4c9b-aa98-cd5080d24227"
+      },
+      "enabled": true
+    },
+    "browserbase-csdn": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@browserbasehq/mcp-server-browserbase",
+        "--contextId",
+        "1059eea0-4e80-4e1c-a499-b2d4d7b8c000",
+        "--keepAlive"
+      ],
+      "description": "Browserbase CSDN专用 - 已登录CSDN的浏览器会话，用于自动写博客",
+      "env": {
+        "BROWSERBASE_API_KEY": "bb_live_0eTR3zDJu4NgC2QCsAP9-h0xdJw",
+        "BROWSERBASE_PROJECT_ID": "2c62e63b-8cc5-4c9b-aa98-cd5080d24227"
+      },
+      "enabled": true
     },
     "slack": {
       "command": "npx",

@@ -56,6 +56,10 @@ class GeneratedFileInfo:
             "image": "🖼️",
             "data": "📊",
             "document": "📄",
+            "audio": "🎵",
+            "video": "🎬",
+            "archive": "📦",
+            "executable": "⚙️",
             "other": "📁",
         }
         return icons.get(self.file_type, "📁")
@@ -70,20 +74,65 @@ def detect_generated_file_type(file_path: str) -> str:
     type_map = {
         # 文本
         ".txt": "text", ".md": "text", ".log": "text", ".csv": "text",
+        ".rtf": "text", ".tex": "text", ".tsv": "text",
         # 代码
         ".py": "code", ".js": "code", ".ts": "code", ".java": "code",
-        ".cpp": "code", ".c": "code", ".h": "code", ".html": "code",
-        ".css": "code", ".json": "code", ".xml": "code", ".yaml": "code",
-        ".yml": "code", ".toml": "code", ".bat": "code", ".ps1": "code",
-        ".sh": "code",
+        ".cpp": "code", ".c": "code", ".h": "code", ".hpp": "code",
+        ".html": "code", ".htm": "code", ".xhtml": "code",
+        ".css": "code", ".scss": "code", ".sass": "code", ".less": "code",
+        ".json": "code", ".jsonl": "code", ".xml": "code", ".xsd": "code",
+        ".yaml": "code", ".yml": "code", ".toml": "code", ".ini": "code",
+        ".cfg": "code", ".conf": "code", ".config": "code",
+        ".bat": "code", ".cmd": "code", ".ps1": "code", ".psm1": "code",
+        ".sh": "code", ".bash": "code", ".zsh": "code", ".fish": "code",
+        ".sql": "code", ".pls": "code", 
+        ".php": "code", ".phtml": "code", ".php3": "code", ".php4": "code",
+        ".rb": "code", ".erb": "code", ".rake": "code",
+        ".go": "code", ".mod": "code", ".sum": "code",
+        ".rs": "code", ".rlib": "code",
+        ".swift": "code", ".kt": "code", ".kts": "code",
+        ".scala": "code", ".sc": "code",
+        ".dart": "code", ".groovy": "code", ".gradle": "code",
+        ".lua": "code", ".tcl": "code",
+        ".perl": "code", ".pl": "code", ".pm": "code",
+        ".r": "code", ".rmd": "code",
+        ".matlab": "code", ".m": "code",
+        ".cs": "code", ".fs": "code", ".vb": "code",
+        ".coffee": "code", ".elm": "code", ".erl": "code",
+        ".ex": "code", ".exs": "code", ".clj": "code", ".cljs": "code",
+        ".hs": "code", ".lhs": "code", ".ml": "code", ".mli": "code",
+        ".jl": "code", ".nim": "code", ".cr": "code",
         # 图片
         ".png": "image", ".jpg": "image", ".jpeg": "image",
         ".bmp": "image", ".gif": "image", ".webp": "image", ".svg": "image",
+        ".ico": "image", ".tiff": "image", ".tif": "image",
+        ".psd": "image", ".ai": "image", ".eps": "image",
         # 数据
-        ".xlsx": "data", ".xls": "data", ".db": "data", ".sqlite": "data",
+        ".xlsx": "data", ".xls": "data", ".xlsb": "data", ".xlsm": "data",
+        ".db": "data", ".sqlite": "data", ".sqlite3": "data",
+        ".parquet": "data", ".feather": "data", ".h5": "data", ".hdf5": "data",
         # 文档
         ".pdf": "document", ".doc": "document", ".docx": "document",
-        ".pptx": "document",
+        ".pptx": "document", ".ppt": "document", ".potx": "document", ".ppsx": "document",
+        ".odt": "document", ".ods": "document", ".odp": "document",
+        # 音频
+        ".mp3": "audio", ".wav": "audio", ".flac": "audio", ".aac": "audio",
+        ".ogg": "audio", ".m4a": "audio", ".wma": "audio", ".opus": "audio",
+        ".mid": "audio", ".midi": "audio", ".ape": "audio", ".dsf": "audio",
+        # 视频
+        ".mp4": "video", ".avi": "video", ".mkv": "video", ".mov": "video",
+        ".wmv": "video", ".flv": "video", ".webm": "video", ".m4v": "video",
+        ".mts": "video", ".m2ts": "video", ".vob": "video", ".rmvb": "video",
+        # 压缩包
+        ".zip": "archive", ".rar": "archive", ".7z": "archive", ".tar": "archive",
+        ".gz": "archive", ".bz2": "archive", ".xz": "archive", ".lz": "archive",
+        ".cab": "archive", ".iso": "archive",
+        # 可执行文件
+        ".exe": "executable", ".msi": "executable", ".dll": "executable",
+        ".app": "executable", ".deb": "executable", ".rpm": "executable",
+        ".apk": "executable", ".ipa": "executable",
+        # 其他
+        ".torrent": "other", ".nfo": "other", ".dmg": "other",
     }
     return type_map.get(ext, "other")
 
@@ -189,6 +238,11 @@ class GeneratedFilesManager:
             date_dir = self._space_dir / datetime.now().strftime("%Y-%m-%d")
             date_dir.mkdir(parents=True, exist_ok=True)
 
+            # 如果源文件已经在生成空间的子目录中，跳过复制
+            if str(source).startswith(str(self._space_dir)):
+                logger.debug("文件已在生成空间目录中，跳过复制: %s", source.name)
+                return source
+
             # 处理文件名冲突
             dest = date_dir / source.name
             if dest.exists():
@@ -207,6 +261,81 @@ class GeneratedFilesManager:
             logger.warning("复制文件到生成空间失败: %s — %s", source.name, e)
             return None
 
+    def scan_existing_files(self) -> int:
+        """扫描生成空间目录中已存在的文件并添加到追踪列表。
+        
+        Returns:
+            int: 新增的文件数量
+        """
+        if not self._space_dir.exists():
+            return 0
+            
+        new_count = 0
+        scanned_paths = {f.path for f in self._files}  # 避免重复扫描
+        
+        # 遍历所有日期子目录
+        for date_dir in self._space_dir.iterdir():
+            if not date_dir.is_dir():
+                continue
+                
+            # 遍历目录中的所有文件
+            for file_path in date_dir.iterdir():
+                if not file_path.is_file():
+                    continue
+                    
+                str_path = str(file_path)
+                if str_path in scanned_paths:
+                    continue  # 已经追踪过了
+                    
+                # 创建文件信息
+                info = GeneratedFileInfo(
+                    path=str_path,
+                    name=file_path.name,
+                    source_tool="historical",
+                    source_action="scan",
+                    file_type=detect_generated_file_type(str_path),
+                    size=file_path.stat().st_size,
+                    created_at=datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(timespec="seconds"),
+                    session_id="",
+                    copied_to=str_path,  # 已在生成空间中
+                )
+                
+                self._files.append(info)
+                scanned_paths.add(str_path)
+                new_count += 1
+                logger.debug("扫描到历史文件: %s", file_path.name)
+                
+        # 也要扫描根目录下的文件（不是按日期分类的旧文件）
+        for file_path in self._space_dir.iterdir():
+            if not file_path.is_file():
+                continue
+                
+            str_path = str(file_path)
+            if str_path in scanned_paths:
+                continue
+                
+            info = GeneratedFileInfo(
+                path=str_path,
+                name=file_path.name,
+                source_tool="historical",
+                source_action="scan",
+                file_type=detect_generated_file_type(str_path),
+                size=file_path.stat().st_size,
+                created_at=datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(timespec="seconds"),
+                session_id="",
+                copied_to=str_path,
+            )
+            
+            self._files.append(info)
+            scanned_paths.add(str_path)
+            new_count += 1
+            logger.debug("扫描到根目录文件: %s", file_path.name)
+            
+        if new_count > 0:
+            logger.info("扫描完成，新增 %d 个历史文件", new_count)
+            
+        return new_count
+
     def get_files_by_type(self, file_type: str) -> list[GeneratedFileInfo]:
         """按文件类型筛选。"""
         return [f for f in self._files if f.file_type == file_type]
@@ -218,6 +347,21 @@ class GeneratedFilesManager:
     def clear(self) -> None:
         """清空追踪记录（不删除实际文件）。"""
         self._files.clear()
+
+    def remove_file(self, file_path: str) -> bool:
+        """移除指定文件的追踪记录（不删除实际文件）。
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            True 如果移除成功，否则 False
+        """
+        for i, f in enumerate(self._files):
+            if f.path == file_path:
+                self._files.pop(i)
+                return True
+        return False
 
     def open_space_folder(self) -> bool:
         """在资源管理器中打开生成空间目录。"""

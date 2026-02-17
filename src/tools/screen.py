@@ -13,6 +13,7 @@ import base64
 import ctypes
 import io
 import logging
+from pathlib import Path
 from typing import Any
 
 import mss
@@ -72,6 +73,10 @@ class ScreenTool(BaseTool):
                         "type": "boolean",
                         "description": "是否为发送给AI模型优化（压缩到更小尺寸）。默认true。",
                     },
+                    "save_path": {
+                        "type": "string",
+                        "description": "截图保存路径（可选）。如 '/path/to/screenshot.png'。不指定则不保存文件。",
+                    },
                 },
                 required_params=[],
             ),
@@ -86,6 +91,10 @@ class ScreenTool(BaseTool):
                     "for_model": {
                         "type": "boolean",
                         "description": "是否为发送给AI模型优化。默认true。",
+                    },
+                    "save_path": {
+                        "type": "string",
+                        "description": "截图保存路径（可选）。不指定则不保存文件。",
                     },
                 },
                 required_params=["title"],
@@ -120,6 +129,7 @@ class ScreenTool(BaseTool):
         region = params.get("region")
         monitor = params.get("monitor", 1)
         for_model = params.get("for_model", True)
+        save_path = params.get("save_path")
 
         try:
             with mss.mss() as sct:
@@ -137,7 +147,7 @@ class ScreenTool(BaseTool):
                     screenshot = sct.grab(sct.monitors[monitor])
 
                 img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
-                return self._encode_image(img, for_model)
+                return self._encode_image(img, for_model, save_path)
 
         except Exception as e:
             return ToolResult(
@@ -152,6 +162,7 @@ class ScreenTool(BaseTool):
     async def _capture_window(self, params: dict[str, Any]) -> ToolResult:
         title = params.get("title", "")
         for_model = params.get("for_model", True)
+        save_path = params.get("save_path")
 
         if not title:
             return ToolResult(
@@ -190,7 +201,7 @@ class ScreenTool(BaseTool):
                 }
                 screenshot = sct.grab(grab_area)
                 img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
-                return self._encode_image(img, for_model)
+                return self._encode_image(img, for_model, save_path)
 
         except Exception as e:
             return ToolResult(
@@ -261,8 +272,8 @@ class ScreenTool(BaseTool):
     # 图片编码（公共方法）
     # ------------------------------------------------------------------
 
-    def _encode_image(self, img: Image.Image, for_model: bool = True) -> ToolResult:
-        """压缩并编码图片为 base64。"""
+    def _encode_image(self, img: Image.Image, for_model: bool = True, save_path: str | None = None) -> ToolResult:
+        """压缩并编码图片为 base64，可选保存到文件。"""
         max_w = self.model_max_width if for_model else self.max_width
 
         if img.width > max_w:
@@ -278,6 +289,21 @@ class ScreenTool(BaseTool):
         info = f"截图完成: {img.width}x{img.height} 像素, {len(img_bytes) / 1024:.1f}KB"
         if for_model:
             info += " (已为模型优化)"
+
+        # 保存到文件（如果指定了路径）
+        saved_path = None
+        if save_path:
+            try:
+                path = Path(save_path).expanduser().resolve()
+                path.parent.mkdir(parents=True, exist_ok=True)
+                img.save(path, format="PNG")
+                saved_path = str(path)
+                info += f"\n已保存到: {path}"
+                logger.info("截图已保存: %s", path)
+            except Exception as e:
+                logger.warning("保存截图失败: %s", e)
+                info += f"\n保存失败: {e}"
+
         logger.info(info)
 
         return ToolResult(
@@ -288,5 +314,6 @@ class ScreenTool(BaseTool):
                 "width": img.width,
                 "height": img.height,
                 "size_bytes": len(img_bytes),
+                "image_path": saved_path,  # 返回保存的文件路径
             },
         )

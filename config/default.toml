@@ -2,46 +2,97 @@
 
 [app]
 name = "WinClaw"
-version = "1.0.0"
+version = "1.2.1"
 log_level = "INFO"
 data_dir = "~/.winclaw"
+language = ""
+theme = "light"
 
 [agent]
 # 默认模型 ID（对应 models.toml 中的键名）
 default_model = "deepseek-chat"
 # 单次任务最大 ReAct 循环步数
-max_steps = 30
+max_steps = 60
 # 单次任务最大 token 预算
 max_tokens_per_task = 50000
 # 单次模型调用超时（秒）
 inference_timeout = 120
 # 单个工具执行超时（秒）
 tool_timeout = 60
-# 系统提示词
-system_prompt = """你是 WinClaw，一个运行在 Windows 上的 AI 桌面智能体。
-你可以通过工具来帮助用户完成各种任务，包括执行命令、读写文件、截屏等。
-当你需要完成某个任务时，请思考需要使用哪些工具，然后逐步执行。
-如果任务不需要使用工具，请直接回答用户的问题。
-请用中文回复用户。"""
+
+# Phase 6: 工具调用链路优化配置
+[agent.tool_optimization]
+# 渐进式工具暴露开关（根据意图置信度分层暴露工具 Schema）
+enable_tool_tiering = true
+# 单次工具调用数量上限（防止模型同时调用过多不相关工具）
+max_tools_per_call = 3
+# Schema 优先级标注开关（在工具描述中添加 [推荐]/[备选] 前缀）
+enable_schema_annotation = true
+# 连续失败 N 次后自动升级工具集（推荐集→扩展集→全量集）
+failures_to_upgrade = 2
+# 模型辅助意图识别开关（仅在关键词匹配置信度极低时触发，默认关闭）
+enable_model_intent_classification = false
+
+# Phase 6: 全链路追踪配置
+[agent.trace]
+# 全链路追踪开关
+enabled = true
+# 追踪日志目录（空=默认 ~/.winclaw/traces）
+trace_dir = ""
+# 工具输出预览最大字符数
+max_output_preview = 200
+# trace 文件保留天数（超过自动删除）
+max_trace_days = 30
+
+# 系统提示�?
+system_prompt = """你是 WinClaw，一个运行在 Windows 上的 AI 桌面智能体�?
+
+你可以通过工具来帮助用户完成各种任务，包括执行命令、读写文件、截屏等�?
+当你需要完成某个任务时，请思考需要使用哪些工具，然后逐步执行�?
+如果任务不需要使用工具，请直接回答用户的问题�?
+
+【重要】关于知识库�?
+- 使用"智能知识�?工具(knowledge_rag)进行知识库问答，这是基于向量检索的最新版�?
+- 知识库相关操作（如添加文档、搜索）都通过"智能知识�?工具完成
+- 不要使用旧的"文档知识�?工具(knowledge)
+- 查询文档列表时，如果 chunk_count=0，说明文档解析失败（可能是加密PDF或图片PDF），需要告知用�?
+
+【浏览器工具选择指南�?
+系统提供两种浏览器工具，请根据任务特点选择最合适的�?
+
+1. **browser (传统浏览�?** - Playwright 驱动，适合简单、确定性的操作
+   - 使用场景：打开指定 URL 并截图、点击已知选择器的元素、在指定输入框输入文�?
+   - 特点：速度快、稳定可靠、需要明确的选择器或 URL
+
+2. **browser_use (智能浏览�?** - AI 驱动，适合复杂、模糊的任务
+   - 使用场景：用自然语言描述任务、复杂多步骤网页操作、自动识别页面结构并提取数据
+   - 特点：自主规划、适应页面变化、无需选择器、可绕过反爬�?
+
+【选择决策�?
+- 多步骤自主决策任�?�?browser_use.run_task
+- 已知选择�?URL �?browser.*
+- 提取未知结构数据 �?browser_use.extract_data
+
+请用中文回复用户�?""
 
 [shell]
 # 默认 shell
 default_shell = "powershell"
-# 命令执行超时（秒）
+# 命令执行超时（秒�?
 timeout = 30
-# 最大输出长度（字符）
+# 最大输出长度（字符�?
 max_output_length = 10000
 
 [file]
-# 最大读取文件大小（字节）
+# 最大读取文件大小（字节�?
 max_read_size = 1048576  # 1MB
 # 允许操作的基础目录（空 = 不限制）
 allowed_dirs = []
 
 [screen]
-# 截图质量（1-100）
+# 截图质量�?-100�?
 quality = 85
-# 截图最大宽度（用于压缩发送给模型）
+# 截图最大宽度（用于压缩发送给模型�?
 max_width = 1920
 # 截图格式
 format = "png"
@@ -49,12 +100,20 @@ format = "png"
 [voice]
 # Whisper 语音识别模型 (tiny/base/small/medium/large)
 # tiny:   最快，准确度较低，适合低配电脑
-# base:   快速，准确度中等（默认）
+# base:   快速，准确度中等（默认�?
 # small:  中等，准确度较高
-# medium: 较慢，准确度高，需要较大内存
-# large:  最慢，准确度最高，需要大量内存
+# medium: 较慢，准确度高，需要较大内�?
+# large:  最慢，准确度最高，需要大量内�?
 whisper_model = "base"
-# 默认识别语言 (空=自动检测, zh=中文, en=英文)
+# 默认识别语言 (�?自动检�? zh=中文, en=英文)
 default_language = "zh"
-# 录音时长 (秒)
+# 录音时长 (�?
 record_duration = 5
+# 录音最大时长 (秒), VAD模式下为上限
+max_duration = 30
+# 是否启用 VAD 自动检测说话结束（说完自动停止录音）
+auto_stop = true
+# VAD 静音能量阈值（越低越灵敏，建议 0.005~0.05）
+silence_threshold = 0.01
+# VAD 静音持续多少秒后停止录音
+silence_duration = 1.5

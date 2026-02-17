@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QMessageBox
 
 if TYPE_CHECKING:
@@ -59,12 +59,37 @@ class GuiAgent(QObject):
     error_occurred = Signal(str)  # 错误信息
     usage_updated = Signal(int, int, float)  # (input_tokens, output_tokens, cost)
     tts_requested = Signal(str)  # 请求 TTS 朗读
+    reasoning_started = Signal()  # 思考过程开始
+    reasoning_chunk = Signal(str)  # 思考内容块
+    reasoning_finished = Signal()  # 思考过程完成
+    cron_job_status = Signal(str, str, str)  # (job_id, status, description) 定时任务状态
 
     def __init__(self, agent: Agent, model_registry: ModelRegistry) -> None:
         super().__init__()
         self._agent = agent
         self._model_registry = model_registry
         self._tts_enabled = False  # TTS 开关状态
+        self._cron_sub_ids: list[tuple[str, int]] = []  # 定时任务事件订阅ID
+        
+        # 订阅定时任务事件
+        self._subscribe_cron_events()
+
+    def _subscribe_cron_events(self) -> None:
+        """订阅定时任务事件。"""
+        async def _on_cron_job(event_type, data):
+            # data 是 CronJobEvent 类型
+            self.cron_job_status.emit(data.job_id, data.status, data.description)
+        
+        try:
+            from src.core.events import EventType
+            sub_started = self._agent.event_bus.on(EventType.CRON_JOB_STARTED, _on_cron_job)
+            sub_finished = self._agent.event_bus.on(EventType.CRON_JOB_FINISHED, _on_cron_job)
+            sub_error = self._agent.event_bus.on(EventType.CRON_JOB_ERROR, _on_cron_job)
+            self._cron_sub_ids.append((EventType.CRON_JOB_STARTED, sub_started))
+            self._cron_sub_ids.append((EventType.CRON_JOB_FINISHED, sub_finished))
+            self._cron_sub_ids.append((EventType.CRON_JOB_ERROR, sub_error))
+        except Exception as e:
+            logger.warning(f"订阅定时任务事件失败: {e}")
 
     def set_tts_enabled(self, enabled: bool) -> None:
         """设置 TTS 开关。"""
@@ -88,6 +113,7 @@ class GuiAgent(QObject):
 
             # 订阅工具调用事件，实时通知 UI
             _tool_sub_ids: list[tuple[str, int]] = []
+            _reasoning_started = False
 
             async def _on_tool_call(event_type, data):
                 self.tool_call_started.emit(data.tool_name, data.action_name)
@@ -97,11 +123,27 @@ class GuiAgent(QObject):
                 self.tool_call_finished.emit(
                     data.tool_name, data.action_name, result_preview
                 )
+                # 如果有 html_image，发送到 GUI 显示
+                if hasattr(data, 'html_image') and data.html_image:
+                    self.message_chunk.emit(data.html_image)
+
+            async def _on_reasoning(event_type, data):
+                nonlocal _reasoning_started
+                if data.is_delta and data.reasoning:
+                    if not _reasoning_started:
+                        self.reasoning_started.emit()
+                        _reasoning_started = True
+                    self.reasoning_chunk.emit(data.reasoning)
+                elif data.is_complete:
+                    self.reasoning_finished.emit()
+                    _reasoning_started = False
 
             sub_tc = self._agent.event_bus.on("tool_call", _on_tool_call)
             sub_tr = self._agent.event_bus.on("tool_result", _on_tool_result)
+            sub_rn = self._agent.event_bus.on("model_reasoning", _on_reasoning)
             _tool_sub_ids.append(("tool_call", sub_tc))
             _tool_sub_ids.append(("tool_result", sub_tr))
+            _tool_sub_ids.append(("model_reasoning", sub_rn))
 
             try:
                 async for chunk in self._agent.chat_stream(message):
@@ -111,6 +153,9 @@ class GuiAgent(QObject):
                 # 取消工具事件订阅
                 for evt_name, sub_id in _tool_sub_ids:
                     self._agent.event_bus.off(evt_name, sub_id)
+                # 确保思考过程标记为完成
+                if _reasoning_started:
+                    self.reasoning_finished.emit()
 
             if full_content:
                 self.message_finished.emit(full_content)
@@ -204,6 +249,10 @@ class WinClawGuiApp:
         # 加载 .env 文件（不覆盖已有环境变量）
         self._load_dotenv()
 
+        # 初始化国际化（必须在 QApplication 创建后）
+        from src.i18n import get_i18n_manager
+        get_i18n_manager()
+
         # 从 keyring 注入密钥到环境变量
         injected = inject_keys_to_env()
         if injected:
@@ -226,12 +275,32 @@ class WinClawGuiApp:
             )
             return 1
 
-        # 应用主题
-        self._current_theme = Theme.LIGHT
+        # 应用主题（先尝试从配置文件加载）
+        try:
+            # Python 3.11+ 内置 tomllib，否则使用 tomli
+            try:
+                import tomllib
+            except ImportError:
+                import tomli as tomllib
+            
+            config_path = Path(__file__).parent.parent.parent / "config" / "default.toml"
+            if config_path.exists():
+                with open(config_path, "rb") as f:
+                    config = tomllib.load(f)
+                saved_theme = config.get("app", {}).get("theme", "light")
+                self._current_theme = Theme(saved_theme)
+        except Exception:
+            self._current_theme = Theme.LIGHT
+        
         apply_theme(self._app, self._current_theme)
 
         # 创建主窗口
-        self._window = MainWindow(self._bridge, minimize_to_tray=True)
+        self._window = MainWindow(
+                    self._bridge,
+                    tool_registry=self._tool_registry,
+                    model_registry=self._model_registry,
+                    minimize_to_tray=True
+                )
 
         # 同步聊天区域主题
         self._apply_chat_theme(self._current_theme)
@@ -275,18 +344,28 @@ class WinClawGuiApp:
         """初始化核心组件（模型注册表、工具注册表、Agent）。"""
         # 模型注册表
         self._model_registry = ModelRegistry()
-        models = self._model_registry.list_models()
+        all_models = self._model_registry.list_models()
+        available_models = self._model_registry.list_available_models()
 
-        if not models:
+        if not all_models:
             raise RuntimeError("未找到任何模型配置，请检查 config/models.toml")
 
         # 工具注册表
         self._tool_registry = create_default_registry()
+        
+        # 为 CronTool 设置 Agent 依赖（用于执行 AI 任务）
+        cron_tool = self._tool_registry.get_tool("cron")
+        if cron_tool and hasattr(cron_tool, "set_agent_dependencies"):
+            cron_tool.set_agent_dependencies(self._model_registry, self._tool_registry)
 
-        # 选择默认模型
+        # 选择默认模型（从可用模型中选择）
         default_key = "deepseek-chat"
-        if self._model_registry.get(default_key) is None:
-            default_key = models[0].key
+        if self._model_registry.get(default_key) is None or not self._model_registry.get(default_key).is_available:
+            # 如果默认模型不可用，选择第一个可用模型
+            if available_models:
+                default_key = available_models[0].key
+            else:
+                logger.warning("没有可用的模型，请检查 API Key 配置")
 
         # 创建 Agent
         self._agent = Agent(
@@ -294,6 +373,10 @@ class WinClawGuiApp:
             tool_registry=self._tool_registry,
             model_key=default_key,
         )
+
+        # 更新 CronTool 的 event_bus（用于发布任务执行状态）
+        if cron_tool and hasattr(cron_tool, "set_agent_dependencies"):
+            cron_tool.set_agent_dependencies(self._model_registry, self._tool_registry, self._agent.event_bus)
 
         # 创建 GUI Agent 包装器
         self._gui_agent = GuiAgent(self._agent, self._model_registry)
@@ -311,8 +394,8 @@ class WinClawGuiApp:
         loaded_count = self._workflow_loader.load_all_templates()
         logger.info(f"已加载 {loaded_count} 个工作流模板")
 
-        # 构建 name -> key 映射
-        for m in models:
+        # 构建 name -> key 映射（使用所有模型）
+        for m in all_models:
             self._model_key_map[m.name] = m.key
         
         # 初始化 MCP 客户端管理器（异步初始化）
@@ -398,14 +481,24 @@ class WinClawGuiApp:
                 self._window.clear_tool_log(),
             )
         )
+
+        # 消息块信号：直接转发到UI
         self._gui_agent.message_chunk.connect(
             self._window.append_ai_message  # type: ignore
         )
+
         self._gui_agent.message_finished.connect(
-            lambda _: (
-                self._window.set_tool_status("完成"),
-                self._window._set_thinking_state(False),
-            )
+            self._on_agent_message_finished
+        )
+        # 思考过程信号连接
+        self._gui_agent.reasoning_started.connect(
+            self._window.start_reasoning  # type: ignore
+        )
+        self._gui_agent.reasoning_chunk.connect(
+            self._window.append_reasoning  # type: ignore
+        )
+        self._gui_agent.reasoning_finished.connect(
+            self._window.finish_reasoning  # type: ignore
         )
         self._gui_agent.tool_call_started.connect(
             lambda name, action: (
@@ -418,6 +511,10 @@ class WinClawGuiApp:
                 f"✔ {name}.{action} → {result[:60]}"
             )
         )
+        # 录音工具被 agent 调用时，弹出录音可视化窗口
+        self._gui_agent.tool_call_started.connect(self._on_agent_tool_call_started)
+        self._gui_agent.tool_call_finished.connect(self._on_agent_tool_call_finished)
+
         self._gui_agent.error_occurred.connect(
             lambda msg: (
                 self._window.add_ai_message(f"抱歉，AI 模型调用失败: {msg}"),
@@ -428,11 +525,22 @@ class WinClawGuiApp:
             self._window.update_usage  # type: ignore
         )
         
+        # 定时任务状态更新
+        self._gui_agent.cron_job_status.connect(
+            lambda job_id, status, desc: self._on_cron_job_status(job_id, status, desc)
+        )
+        
         # TTS 朗读
         self._gui_agent.tts_requested.connect(self._on_tts_speak)
 
         # 设置对话框
         self._window.settings_requested.connect(self._open_settings)
+
+        # 显示菜单 - 主题切换
+        self._window.theme_changed.connect(self._on_theme_changed)
+
+        # 显示菜单 - 语言切换
+        self._window.language_changed.connect(self._on_language_changed_from_menu)
 
         # 图片附件选择 -> OCR 识别
         self._window.image_selected.connect(self._on_image_selected)
@@ -445,11 +553,17 @@ class WinClawGuiApp:
         # 生成空间
         self._window.generated_space_requested.connect(self._on_open_generated_space)
 
+        # 知识库
+        self._window.knowledge_rag_requested.connect(self._on_open_knowledge_rag)
+
+        # 定时任务管理
+        self._window.cron_job_requested.connect(self._on_open_cron_job)
+
         # 历史对话
         self._window.history_requested.connect(self._on_open_history)
 
-        # 设置模型列表
-        models = self._model_registry.list_models() if self._model_registry else []
+        # 设置模型列表（只显示可用的模型）
+        models = self._model_registry.list_available_models() if self._model_registry else []
         model_names = [m.name for m in models]
         self._window.set_models(model_names)
 
@@ -461,12 +575,34 @@ class WinClawGuiApp:
         
         # 工作流面板信号连接
         self._window.workflow_panel.cancel_requested.connect(self._on_workflow_cancel)
-        
+
         # 设置工作流事件订阅
         self._setup_workflow_events()
 
         # 设置文件生成事件订阅
         self._setup_file_generated_events()
+
+        # 设置 CommandHandler 的 agent 引用（用于命令切换模型）
+        if self._window._cmd_handler:
+            self._window._cmd_handler.set_agent(self._agent)
+
+    def _update_session_title(self) -> None:
+        """根据第一条用户消息更新会话标题。"""
+        if not self._agent or not self._window:
+            return
+
+        try:
+            session = self._agent.session_manager.current_session
+            # 如果标题是默认的"默认对话"或"新对话"，则更新为第一条用户消息
+            if session.title in ("默认对话", "新对话"):
+                # 调用 session_manager 的 generate_title 方法
+                new_title = self._agent.session_manager.generate_title()
+                if new_title:
+                    # 更新 UI 显示
+                    self._window._session_info.setText(new_title)
+                    logger.info("会话标题已更新: %s", new_title)
+        except Exception as e:
+            logger.warning("更新会话标题失败: %s", e)
 
     def _on_user_message(self, message: str) -> None:
         """处理用户消息。"""
@@ -502,6 +638,7 @@ class WinClawGuiApp:
             if self._window:
                 self._window.add_ai_message("\n[已取消]")
                 self._window._set_thinking_state(False)
+                self._window.set_tool_status("已取消")
         self._current_chat_task = None
     
     def _setup_global_error_handler(self) -> None:
@@ -616,7 +753,7 @@ class WinClawGuiApp:
 
     def _open_settings(self) -> None:
         """打开设置对话框。"""
-        models = [m.name for m in (self._model_registry.list_models() if self._model_registry else [])]
+        models = [m.name for m in (self._model_registry.list_available_models() if self._model_registry else [])]
         current_model = ""
         if self._agent and self._model_registry:
             cfg = self._model_registry.get(self._agent.model_key)
@@ -637,7 +774,108 @@ class WinClawGuiApp:
         dlg.hotkey_changed.connect(self._on_hotkey_changed)
         dlg.keys_updated.connect(lambda: logger.info("API Key 已更新"))
         dlg.whisper_model_changed.connect(self._on_whisper_model_changed)
+        dlg.language_changed.connect(self._on_language_changed)
         dlg.exec()
+
+    def _on_language_changed(self, lang_code: str) -> None:
+        """语言切换后刷新 UI。"""
+        if self._window:
+            self._window.reload_ui()
+        # 刷新托盘菜单
+        if self._tray:
+            self._tray._setup_menu()
+
+    def _on_language_changed_from_menu(self, lang_code: str) -> None:
+        """从菜单切换语言。"""
+        from src.i18n import get_i18n_manager
+
+        i18n = get_i18n_manager()
+        if i18n.load_language(lang_code):
+            logger.info("语言已切换为: %s", lang_code)
+            # 保存语言设置到配置文件
+            self._save_language_setting(lang_code)
+            # 刷新 UI
+            self._on_language_changed(lang_code)
+
+    def _save_language_setting(self, lang_code: str) -> None:
+        """保存语言设置到配置文件。"""
+        try:
+            import tomli as tomllib
+            config_path = Path(__file__).parent.parent.parent / "config" / "default.toml"
+            if config_path.exists():
+                with open(config_path, "rb") as f:
+                    config = tomllib.load(f)
+                if "app" not in config:
+                    config["app"] = {}
+                config["app"]["language"] = lang_code
+
+                # 手动写入 TOML 文件
+                self._write_toml(config_path, config)
+                logger.info("语言设置已保存: %s", lang_code)
+        except Exception as e:
+            logger.warning("保存语言设置失败: %s", e)
+
+    def _save_theme_setting(self, theme_str: str) -> None:
+        """保存主题设置到配置文件。"""
+        try:
+            # Python 3.11+ 内置 tomllib，否则使用 tomli
+            try:
+                import tomllib
+            except ImportError:
+                import tomli as tomllib
+            
+            config_path = Path(__file__).parent.parent.parent / "config" / "default.toml"
+            if config_path.exists():
+                with open(config_path, "rb") as f:
+                    config = tomllib.load(f)
+                if "app" not in config:
+                    config["app"] = {}
+                config["app"]["theme"] = theme_str
+
+                # 手动写入 TOML 文件
+                self._write_toml(config_path, config)
+                logger.info("主题设置已保存: %s", theme_str)
+        except Exception as e:
+            logger.warning("保存主题设置失败: %s", e)
+
+    def _write_toml(self, path: Path, config: dict) -> None:
+        """手动写入 TOML 配置文件，保留其他节。"""
+        # 读取现有文件内容，保留注释
+        existing_lines: list[str] = []
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                existing_lines = f.readlines()
+
+        # 找到 [app] 节的位置
+        app_start = -1
+        app_end = -1
+        for i, line in enumerate(existing_lines):
+            stripped = line.strip()
+            if stripped == "[app]":
+                app_start = i
+            elif app_start >= 0 and stripped.startswith("[") and stripped.endswith("]"):
+                app_end = i
+                break
+
+        # 构建新的 [app] 节
+        app_lines = ["[app]\n"]
+        for key, value in config.get("app", {}).items():
+            if isinstance(value, str):
+                app_lines.append(f'{key} = "{value}"\n')
+            else:
+                app_lines.append(f"{key} = {value}\n")
+        app_lines.append("\n")
+
+        # 重建文件内容
+        if app_start >= 0 and app_end > app_start:
+            # 替换现有 [app] 节
+            new_lines = existing_lines[:app_start] + app_lines + existing_lines[app_end:]
+        else:
+            # 添加新的 [app] 节（在文件开头之后）
+            new_lines = app_lines + existing_lines
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
 
     def _on_theme_changed(self, theme_str: str) -> None:
         """切换主题。"""
@@ -646,6 +884,8 @@ class WinClawGuiApp:
         if self._app:
             apply_theme(self._app, theme)
         self._apply_chat_theme(theme)
+        # 保存主题设置
+        self._save_theme_setting(theme_str)
 
     def _apply_chat_theme(self, theme: Theme) -> None:
         """同步聊天区域主题颜色。"""
@@ -764,6 +1004,31 @@ class WinClawGuiApp:
             self._tray.hide()
         if self._task_runner:
             self._task_runner.cancel_all()
+
+    # ===== 语音配置读取 =====
+
+    def _load_voice_config(self) -> dict:
+        """读取 voice 配置节，返回配置字典。"""
+        try:
+            try:
+                import tomllib
+            except ImportError:
+                import tomli as tomllib
+
+            config_path = Path(__file__).parent.parent.parent / "config" / "default.toml"
+            if config_path.exists():
+                with open(config_path, "rb") as f:
+                    config = tomllib.load(f)
+                voice = config.get("voice", {})
+                return {
+                    "max_duration": voice.get("max_duration", 30),
+                    "auto_stop": voice.get("auto_stop", True),
+                    "silence_threshold": voice.get("silence_threshold", 0.01),
+                    "silence_duration": voice.get("silence_duration", 1.5),
+                }
+        except Exception as e:
+            logger.debug("读取 voice 配置失败，使用默认值: %s", e)
+        return {"max_duration": 30, "auto_stop": True, "silence_threshold": 0.01, "silence_duration": 1.5}
 
     # ===== 历史对话相关 =====
 
@@ -964,9 +1229,56 @@ class WinClawGuiApp:
             self._generated_files_manager.count
         )
 
+    def _on_open_knowledge_rag(self) -> None:
+        """打开知识库管理对话框。"""
+        if not self._window:
+            return
+
+        # 获取 knowledge_rag 工具
+        tool = None
+        if self._tool_registry:
+            tool = self._tool_registry.get_tool("knowledge_rag")
+
+        if not tool:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self._window,
+                "知识库未就绪",
+                "知识库工具尚未加载，请重启应用后重试。"
+            )
+            return
+
+        from .knowledge_rag_dialog import KnowledgeRAGDialog
+
+        dlg = KnowledgeRAGDialog(tool, self._window)
+        dlg.exec()
+
+    def _on_open_cron_job(self) -> None:
+        """打开定时任务管理对话框。"""
+        if not self._window:
+            return
+
+        # 获取 cron 工具
+        tool = None
+        if self._tool_registry:
+            tool = self._tool_registry.get_tool("cron")
+
+        if not tool:
+            QMessageBox.warning(
+                self._window,
+                "定时任务未就绪",
+                "定时任务工具尚未加载，请重启应用后重试。"
+            )
+            return
+
+        from .cron_job_dialog import CronJobDialog
+        dlg = CronJobDialog(tool, self._window)
+        dlg.exec()
+
     def _on_voice_record(self) -> None:
         """处理录音请求。"""
         if not self._task_runner or not self._window:
+            logger.warning("录音请求被忽略: task_runner=%s, window=%s", self._task_runner, self._window)
             return
         
         # 检查语音工具是否可用
@@ -983,7 +1295,25 @@ class WinClawGuiApp:
             return
         
         # 更新状态
-        self._window.set_tool_status("录音中... (5秒)")
+        self._window.set_tool_status("录音中... (说完自动停止)")
+        
+        # 读取配置
+        voice_config = self._load_voice_config()
+        max_duration = voice_config.get("max_duration", 30)
+        auto_stop = voice_config.get("auto_stop", True)
+        
+        # 创建并显示录音弹窗
+        try:
+            from .voice_record_dialog import VoiceRecordDialog
+            self._voice_dialog = VoiceRecordDialog(
+                duration=max_duration, parent=self._window, vad_mode=auto_stop
+            )
+            self._voice_dialog.stop_requested.connect(self._on_voice_stop)
+            self._voice_dialog.cancelled.connect(self._on_voice_dialog_cancelled)
+            self._voice_dialog.start_recording()
+        except Exception as e:
+            logger.exception("创建录音弹窗失败: %s", e)
+            # 弹窗创建失败不影响录音流程
         
         # 启动录音任务
         self._recording_task = self._task_runner.run(
@@ -992,9 +1322,62 @@ class WinClawGuiApp:
         )
 
     def _on_voice_stop(self) -> None:
-        """处理停止录音请求。"""
-        # 目前录音自动停止，此方法保留供未来扩展
-        pass
+        """处理停止录音请求（手动停止按钮）。"""
+        # 通知 VoiceInputTool 停止录音
+        try:
+            from src.tools.voice_input import VoiceInputTool
+            # 发送停止信号（如果有活跃的工具实例）
+            if hasattr(self, '_active_voice_tool') and self._active_voice_tool:
+                self._active_voice_tool.stop_recording()
+        except Exception as e:
+            logger.warning("停止录音失败: %s", e)
+
+    def _on_voice_dialog_cancelled(self) -> None:
+        """录音弹窗被取消。"""
+        if self._window:
+            self._window.reset_voice_button()
+            self._window.set_tool_status("空闲")
+
+    def _on_agent_tool_call_started(self, tool_name: str, action: str) -> None:
+        """Agent 调用工具时的回调，检测录音工具并弹出弹窗。"""
+        if tool_name != "voice_input" or action not in ("record_and_transcribe", "record_audio"):
+            return
+        if not self._window:
+            return
+
+        try:
+            from .voice_record_dialog import VoiceRecordDialog
+            # 从配置读取录音参数
+            voice_config = self._load_voice_config()
+            max_duration = voice_config.get("max_duration", 30)
+            auto_stop = voice_config.get("auto_stop", True)
+            self._voice_dialog = VoiceRecordDialog(
+                duration=max_duration, parent=self._window, vad_mode=auto_stop
+            )
+            self._voice_dialog.cancelled.connect(self._on_voice_dialog_cancelled)
+            self._voice_dialog.start_recording()
+            logger.info("Agent 调用录音工具，已弹出录音弹窗 (VAD=%s)", auto_stop)
+        except Exception as e:
+            logger.exception("Agent 路径创建录音弹窗失败: %s", e)
+
+    def _on_agent_tool_call_finished(self, tool_name: str, action: str, result_preview: str) -> None:
+        """Agent 工具执行完毕的回调，更新录音弹窗状态。"""
+        if tool_name != "voice_input" or action != "record_and_transcribe":
+            return
+
+        dialog = getattr(self, '_voice_dialog', None)
+        if not dialog or not dialog.isVisible():
+            return
+
+        try:
+            if "录音转录成功" in result_preview:
+                dialog.set_success("语音已识别，AI 正在处理...")
+            elif "未识别" in result_preview or not result_preview.strip():
+                dialog.set_no_speech()
+            else:
+                dialog.set_error(result_preview[:100] if result_preview else "识别失败")
+        except Exception as e:
+            logger.exception("更新录音弹窗状态失败: %s", e)
 
     def _on_whisper_model_changed(self, model_name: str) -> None:
         """处理 Whisper 模型切换。"""
@@ -1015,9 +1398,93 @@ class WinClawGuiApp:
             status = "开启" if enabled else "关闭"
             self._window.add_tool_log(f"🔊 TTS 已{status}")
 
+    def _on_cron_job_status(self, job_id: str, status: str, description: str) -> None:
+        """处理定时任务状态更新。
+        
+        Args:
+            job_id: 任务ID
+            status: 状态 (started/finished/error)
+            description: 任务描述
+        """
+        if not self._window:
+            return
+        
+        # 更新状态栏
+        if status == "started":
+            self._window.update_cron_status("running", description)
+            self._window.add_tool_log(f"⏰ 定时任务开始: {description}")
+            # 任务开始时弹出系统通知
+            self._show_cron_notification("定时任务开始执行", f"⏰ {description}")
+        elif status == "finished":
+            self._window.update_cron_status("success", description)
+            self._window.add_tool_log(f"✓ 定时任务完成: {description}")
+            # 任务完成后5秒清除状态显示
+            QTimer.singleShot(5000, lambda: self._window.update_cron_status("idle"))
+        elif status == "error":
+            self._window.update_cron_status("error", description)
+            self._window.add_tool_log(f"✗ 定时任务失败: {description}")
+            # 任务失败后5秒清除状态显示
+            QTimer.singleShot(5000, lambda: self._window.update_cron_status("idle"))
+            # 任务失败时弹出系统通知
+            self._show_cron_notification("定时任务执行失败", f"✗ {description}")
+        # 注意：执行中状态不清除，等待完成/失败事件
+    
+    def _show_cron_notification(self, title: str, message: str) -> None:
+        """显示定时任务系统通知。
+        
+        Args:
+            title: 通知标题
+            message: 通知内容
+        """
+        try:
+            # 使用 winotify 显示系统通知
+            from winotify import Notification, audio
+            toast = Notification(
+                app_id="WinClaw",
+                title=title,
+                msg=message,
+                duration="short",
+            )
+            toast.set_audio(audio.Default, loop=False)
+            toast.show()
+        except ImportError:
+            logger.debug("winotify 未安装，跳过系统通知")
+        except Exception as e:
+            logger.debug(f"显示系统通知失败: {e}")
+
+    def _on_agent_message_finished(self, full_content: str) -> None:
+        """Agent 消息生成完成回调。"""
+        if not self._window:
+            return
+
+        self._window.set_tool_status("完成")
+        self._window._set_thinking_state(False)
+        self._update_session_title()
+
+        # 对话模式下，如果 TTS 未开启，需要直接恢复监听
+        # （TTS 开启时，由 _on_tts_speak 走 conversation TTS 路径，播放完毕自动恢复）
+        if self._window._conversation_mode != "off":
+            if not self._tts_enabled:
+                logger.info("对话模式下 TTS 未开启，直接恢复监听")
+                if self._window._conversation_mgr:
+                    self._window._conversation_mgr.on_tts_finished()
+
     def _on_tts_speak(self, text: str) -> None:
         """处理 TTS 朗读请求。"""
-        if not self._task_runner or not self._window or not self._tts_enabled:
+        if not self._window or not self._tts_enabled:
+            return
+        
+        # 对话模式下，走 conversation TTS 路径（自带状态管理：
+        # on_tts_start 暂停监听，playback_finished -> on_tts_finished 恢复监听）
+        if (self._window._conversation_mode != "off"
+                and self._window._conversation_mgr
+                and self._window._tts_player):
+            logger.info("对话模式下 TTS 走 conversation 路径")
+            self._window._on_conversation_play_tts(text)
+            return
+        
+        # 非对话模式，走原有 VoiceOutputTool 路径
+        if not self._task_runner:
             return
         
         # 检查 TTS 工具是否可用
@@ -1062,21 +1529,32 @@ class WinClawGuiApp:
                 self._window.add_tool_log(f"❌ TTS 错误: {e}")
 
     async def _record_and_transcribe(self) -> None:
-        """录音并转为文字。"""
+        """录音并转为文字（使用 VAD 智能录音）。"""
         from src.tools.voice_input import VoiceInputTool
         
         try:
             tool = VoiceInputTool()
+            self._active_voice_tool = tool  # 保存引用，供手动停止使用
             
-            # 使用配置的 Whisper 模型
+            # 使用配置的 Whisper 模型和录音参数
             model = self._whisper_model
-            logger.info("录音使用 Whisper 模型: %s", model)
+            voice_config = self._load_voice_config()
+            max_duration = voice_config.get("max_duration", 30)
+            auto_stop = voice_config.get("auto_stop", True)
             
-            # 录音
+            logger.info("录音使用 Whisper 模型: %s, max_duration=%s, auto_stop=%s",
+                        model, max_duration, auto_stop)
+            
+            # 录音（VAD 模式）
             result = await tool.execute(
                 "record_and_transcribe",
-                {"duration": 5, "model": model, "language": "zh"}
+                {"duration": max_duration, "auto_stop": auto_stop,
+                 "model": model, "language": "zh"}
             )
+            
+            # 更新弹窗为识别处理中
+            if hasattr(self, '_voice_dialog') and self._voice_dialog and self._voice_dialog.isVisible():
+                self._voice_dialog.set_processing()
             
             if result.status == ToolResultStatus.SUCCESS and self._window:
                 text = result.data.get("text", "")
@@ -1085,20 +1563,32 @@ class WinClawGuiApp:
                     self._window.set_input_text(text)
                     self._window.set_tool_status(f"录音识别完成: {len(text)} 字")
                     self._window.add_tool_log(f"🎤 识别: {text[:50]}...")
+                    # 弹窗显示成功
+                    if hasattr(self, '_voice_dialog') and self._voice_dialog and self._voice_dialog.isVisible():
+                        self._voice_dialog.set_success(text)
                 else:
                     self._window.set_tool_status("未识别到语音")
                     self._window.add_tool_log("⚠️ 未识别到有效语音")
+                    # 弹窗显示无语音
+                    if hasattr(self, '_voice_dialog') and self._voice_dialog and self._voice_dialog.isVisible():
+                        self._voice_dialog.set_no_speech()
             else:
                 if self._window:
                     error_msg = result.error or "识别失败"
                     self._window.set_tool_status(f"录音失败: {error_msg}")
                     self._window.add_tool_log(f"❌ {error_msg}")
+                    # 弹窗显示错误
+                    if hasattr(self, '_voice_dialog') and self._voice_dialog and self._voice_dialog.isVisible():
+                        self._voice_dialog.set_error(error_msg)
         
         except Exception as e:
             logger.exception("录音转文字失败")
             if self._window:
                 self._window.set_tool_status(f"录音错误: {e}")
                 self._window.add_tool_log(f"❌ 录音错误: {e}")
+            # 弹窗显示错误
+            if hasattr(self, '_voice_dialog') and self._voice_dialog and self._voice_dialog.isVisible():
+                self._voice_dialog.set_error(str(e))
         
         finally:
             # 重置按钮状态

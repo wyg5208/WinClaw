@@ -37,6 +37,7 @@ class EventType:
     MODEL_ERROR = "model_error"         # 模型 API 出错
     MODEL_USAGE = "model_usage"         # token 用量更新
     MODEL_STREAM_CHUNK = "model_stream_chunk"  # 流式文本片段
+    MODEL_REASONING = "model_reasoning"  # 模型思考过程（reasoning_content）
 
     # --- 会话 ---
     SESSION_CREATED = "session_created"   # 新会话创建
@@ -45,6 +46,11 @@ class EventType:
 
     # --- 文件生成 ---
     FILE_GENERATED = "file_generated"   # 工具生成了文件
+
+    # --- 定时任务 ---
+    CRON_JOB_STARTED = "cron_job_started"     # 定时任务开始执行
+    CRON_JOB_FINISHED = "cron_job_finished"   # 定时任务执行完成
+    CRON_JOB_ERROR = "cron_job_error"         # 定时任务执行失败
 
     # --- 系统 ---
     APP_STARTED = "app_started"         # 应用启动完成
@@ -111,6 +117,7 @@ class ToolResultEvent:
     error: str = ""
     duration_ms: float = 0.0
     session_id: str = ""
+    html_image: str = ""  # 用于 GUI 直接显示的图片 HTML
 
 
 @dataclass
@@ -144,6 +151,15 @@ class ModelUsageEvent:
 
 
 @dataclass
+class ModelReasoningEvent:
+    """模型思考过程事件数据（用于分离reasoning_content）。"""
+    reasoning: str  # 思考内容
+    is_delta: bool = True  # 是否是增量内容（流式）
+    is_complete: bool = False  # 是否已完成
+    session_id: str = ""
+
+
+@dataclass
 class SessionEvent:
     """会话事件数据。"""
     session_id: str
@@ -170,3 +186,15 @@ class FileGeneratedEvent:
     source_action: str = ""      # 来源动作名
     file_size: int = 0           # 文件大小
     session_id: str = ""
+
+
+@dataclass
+class CronJobEvent:
+    """定时任务事件数据。"""
+    job_id: str                  # 任务ID
+    job_type: str = "command"    # 任务类型: command/ai_task
+    description: str = ""        # 任务描述
+    status: str = "started"      # 状态: started/finished/error
+    result: str = ""             # 执行结果（finished时）
+    error: str = ""              # 错误信息（error时）
+    duration_ms: float = 0.0     # 执行时长（毫秒）

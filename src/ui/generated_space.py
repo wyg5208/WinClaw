@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QMessageBox,
     QSizePolicy,
+    QLineEdit,
+    QComboBox,
 )
 
 if TYPE_CHECKING:
@@ -38,6 +40,7 @@ class FileCard(QFrame):
     """单个文件卡片组件。"""
 
     file_open_requested = Signal(str)  # 请求打开文件
+    delete_requested = Signal(object)  # 请求删除文件
 
     def __init__(self, file_info, parent=None):
         super().__init__(parent)
@@ -47,19 +50,8 @@ class FileCard(QFrame):
     def _setup_ui(self):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
-        self.setStyleSheet("""
-            FileCard {
-                background: palette(base);
-                border: 1px solid palette(mid);
-                border-radius: 8px;
-                padding: 8px;
-                margin: 2px 0px;
-            }
-            FileCard:hover {
-                border-color: #0078d4;
-                background: palette(alternateBase);
-            }
-        """)
+        # 样式由全局主题控制
+        self.setObjectName("fileCard")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -101,12 +93,13 @@ class FileCard(QFrame):
             detail_parts.append(time_part)
 
         detail_label = QLabel(" · ".join(detail_parts))
-        detail_label.setStyleSheet("color: gray; font-size: 11px;")
+        detail_label.setStyleSheet("font-size: 11px;")
+        detail_label.setObjectName("detailLabel")
         info_layout.addWidget(detail_label)
 
         # 路径行
         path_label = QLabel(self._file_info.path)
-        path_label.setStyleSheet("color: gray; font-size: 10px;")
+        path_label.setStyleSheet("font-size: 10px;")
         path_label.setWordWrap(True)
         path_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
@@ -124,6 +117,18 @@ class FileCard(QFrame):
         )
         layout.addWidget(open_btn)
 
+        # 删除按钮
+        delete_btn = QPushButton("🗑️")
+        delete_btn.setFixedWidth(40)
+        delete_btn.setToolTip("删除此文件记录")
+        delete_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        delete_btn.clicked.connect(self._on_delete)
+        layout.addWidget(delete_btn)
+
+    def _on_delete(self):
+        """请求删除。"""
+        self.delete_requested.emit(self._file_info)
+
 
 class GeneratedSpaceDialog(QDialog):
     """生成空间对话框。"""
@@ -131,13 +136,18 @@ class GeneratedSpaceDialog(QDialog):
     def __init__(self, manager: GeneratedFilesManager, parent=None):
         super().__init__(parent)
         self._manager = manager
+        self._all_files: list = []  # 保存所有文件用于筛选排序
+        # 扫描历史文件
+        scanned_count = self._manager.scan_existing_files()
+        if scanned_count > 0:
+            logger.info("生成空间对话框: 扫描到 %d 个历史文件", scanned_count)
         self._setup_ui()
         self._populate_files()
 
     def _setup_ui(self):
         self.setWindowTitle("📂 生成空间 — AI 生成的文件")
-        self.setMinimumSize(650, 480)
-        self.resize(750, 560)
+        self.setMinimumSize(700, 520)
+        self.resize(800, 600)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -169,12 +179,60 @@ class GeneratedSpaceDialog(QDialog):
         line.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(line)
 
+        # 搜索区域
+        search_layout = QHBoxLayout()
+        search_layout.setSpacing(10)
+
+        search_label = QLabel("🔍 搜索:")
+        search_layout.addWidget(search_label)
+
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("输入文件名搜索...")
+        self._search_input.setMinimumWidth(200)
+        self._search_input.textChanged.connect(self._on_filter_changed)
+        search_layout.addWidget(self._search_input, stretch=1)
+
+        layout.addLayout(search_layout)
+
+        # 筛选和排序区域
+        filter_sort_layout = QHBoxLayout()
+        filter_sort_layout.setSpacing(10)
+
+        # 筛选器：按文件类型
+        filter_label = QLabel("筛选:")
+        filter_sort_layout.addWidget(filter_label)
+
+        self._filter_combo = QComboBox()
+        self._filter_combo.addItems(["全部", "文档", "图片", "代码", "其他"])
+        self._filter_combo.setFixedWidth(100)
+        self._filter_combo.currentTextChanged.connect(self._on_filter_changed)
+        filter_sort_layout.addWidget(self._filter_combo)
+
+        # 排序器
+        sort_label = QLabel("排序:")
+        filter_sort_layout.addWidget(sort_label)
+
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItems([
+            "时间降序",
+            "时间升序",
+            "名称升序",
+            "名称降序",
+            "大小降序",
+            "大小升序",
+        ])
+        self._sort_combo.setFixedWidth(100)
+        self._sort_combo.currentTextChanged.connect(self._on_filter_changed)
+        filter_sort_layout.addWidget(self._sort_combo)
+
+        filter_sort_layout.addStretch()
+
+        layout.addLayout(filter_sort_layout)
+
         # 文件列表滚动区域
         self._scroll_area = QScrollArea()
         self._scroll_area.setWidgetResizable(True)
-        self._scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self._file_list_widget = QWidget()
         self._file_list_layout = QVBoxLayout(self._file_list_widget)
@@ -224,8 +282,80 @@ class GeneratedSpaceDialog(QDialog):
 
         layout.addLayout(button_layout)
 
+    def _on_filter_changed(self):
+        """筛选或排序条件改变。"""
+        self._refresh_files()
+
+    def _get_file_category(self, file_info) -> str:
+        """获取文件类别。"""
+        name = file_info.name.lower()
+        ext = file_info.extension.lower() if hasattr(file_info, 'extension') else ''
+
+        # 文档
+        doc_exts = ('.pdf', '.doc', '.docx', '.txt', '.md', '.rtf', '.odt', '.ppt', '.pptx', '.xls', '.xlsx', '.csv')
+        # 图片
+        img_exts = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico')
+        # 代码
+        code_exts = ('.py', '.js', '.ts', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.java', '.c', '.cpp', '.h', '.go', '.rs', '.swift', '.kt', '.sh', '.bat', '.ps1')
+
+        if ext in doc_exts or name.endswith(('.doc', '.docx')):
+            return "文档"
+        elif ext in img_exts or any(name.endswith(e) for e in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')):
+            return "图片"
+        elif ext in code_exts or any(name.endswith(e) for e in ('.py', '.js', '.ts', '.html', '.css', '.json', '.java', '.c', '.cpp', '.go', '.rs', '.swift')):
+            return "代码"
+        else:
+            return "其他"
+
+    def _apply_filter_and_sort(self) -> list:
+        """应用筛选和排序。"""
+        if not self._all_files:
+            return []
+
+        # 获取当前筛选和排序条件
+        search_text = self._search_input.text().strip().lower()
+        filter_type = self._filter_combo.currentText()
+        sort_type = self._sort_combo.currentText()
+
+        # 筛选
+        filtered = []
+        for f in self._all_files:
+            # 搜索筛选
+            if search_text and search_text not in f.name.lower():
+                continue
+
+            # 类型筛选
+            if filter_type != "全部":
+                category = self._get_file_category(f)
+                if category != filter_type:
+                    continue
+
+            filtered.append(f)
+
+        # 排序
+        if sort_type == "时间降序":
+            filtered.sort(key=lambda x: x.created_at, reverse=True)
+        elif sort_type == "时间升序":
+            filtered.sort(key=lambda x: x.created_at)
+        elif sort_type == "名称升序":
+            filtered.sort(key=lambda x: x.name.lower())
+        elif sort_type == "名称降序":
+            filtered.sort(key=lambda x: x.name.lower(), reverse=True)
+        elif sort_type == "大小降序":
+            filtered.sort(key=lambda x: x.size, reverse=True)
+        elif sort_type == "大小升序":
+            filtered.sort(key=lambda x: x.size)
+
+        return filtered
+
     def _populate_files(self):
         """填充文件列表。"""
+        # 保存所有文件
+        self._all_files = list(self._manager.files)
+        self._refresh_files()
+
+    def _refresh_files(self):
+        """刷新文件列表（应用筛选和排序）。"""
         # 清空现有卡片
         while self._file_list_layout.count():
             item = self._file_list_layout.takeAt(0)
@@ -233,25 +363,40 @@ class GeneratedSpaceDialog(QDialog):
             if widget:
                 widget.deleteLater()
 
-        files = self._manager.files
+        # 应用筛选和排序
+        filtered_files = self._apply_filter_and_sort()
 
         # 更新统计
-        self._count_label.setText(f"{len(files)} 个文件")
-        self._summary_label.setText(self._manager.get_summary())
+        total_count = len(self._all_files)
+        filtered_count = len(filtered_files)
 
-        if not files:
+        if total_count == 0:
+            self._count_label.setText("0 个文件")
+            self._summary_label.setText("")
+        elif filtered_count == total_count:
+            self._count_label.setText(f"{total_count} 个文件")
+            self._summary_label.setText(self._manager.get_summary())
+        else:
+            self._count_label.setText(f"{filtered_count} / {total_count} 个文件")
+            # 计算筛选后的大小
+            total_size = sum(f.size for f in filtered_files)
+            if total_size >= 1024 * 1024:
+                size_str = f"{total_size / (1024 * 1024):.1f} MB"
+            else:
+                size_str = f"{total_size / 1024:.0f} KB"
+            self._summary_label.setText(f"选中文件总大小: {size_str}")
+
+        if not filtered_files:
             self._file_list_layout.addWidget(self._empty_label)
             self._empty_label.show()
             return
 
         self._empty_label.hide()
 
-        # 按时间倒序显示（最新的在前面）
-        sorted_files = sorted(files, key=lambda f: f.created_at, reverse=True)
-
-        for file_info in sorted_files:
+        for file_info in filtered_files:
             card = FileCard(file_info)
             card.file_open_requested.connect(self._on_open_file)
+            card.delete_requested.connect(self._on_delete_file)
             self._file_list_layout.addWidget(card)
 
         # 底部弹性空间
@@ -292,4 +437,18 @@ class GeneratedSpaceDialog(QDialog):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._manager.clear()
+            self._populate_files()
+
+    def _on_delete_file(self, file_info):
+        """删除单个文件记录。"""
+        reply = QMessageBox.question(
+            self,
+            "删除文件记录",
+            f"确定删除此文件记录？\n{file_info.name}\n\n注意：仅删除追踪记录，不会删除实际文件。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            # 从管理器中移除此文件
+            self._manager.remove_file(file_info.path)
             self._populate_files()

@@ -41,6 +41,13 @@ class AuditEntry:
     session_id: str = ""
     completed: bool = False  # 是否已有结果
 
+    # Phase 6 增强字段
+    intent: str = ""  # 识别到的意图
+    confidence: float = 0.0  # 意图置信度
+    tool_tier: str = ""  # 工具集层级 (recommended/extended/full)
+    consecutive_failures: int = 0  # 当时的连续失败次数
+    user_input: str = ""  # 原始用户输入
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
